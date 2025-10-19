@@ -1,10 +1,15 @@
+// PATH: Sift/Services/TMDBClient.swift  (use your actual path for TMDBClient)
 import Foundation
 
 actor TMDBClient {
     private weak var settings: AppSettings?
     private var imageBaseURL: String?
+    private let session: URLSession   // ← injected
 
-    init(settings: AppSettings) { self.settings = settings }
+    init(settings: AppSettings, session: URLSession = .shared) { // ← default .shared
+        self.settings = settings
+        self.session = session
+    }
 
     func bestSearchMatch(for title: String) async throws -> TMDBSearchMovie? {
         guard let key = await apiKeyOrNil() else { return nil }
@@ -44,7 +49,10 @@ actor TMDBClient {
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
         req.cachePolicy = .reloadIgnoringLocalCacheData
-        let (data, resp) = try await URLSession.shared.data(for: req)
+
+        // USE INJECTED SESSION (this is the key)
+        let (data, resp) = try await session.data(for: req)
+
         guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw URLError(.badServerResponse)
         }

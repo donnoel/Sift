@@ -2,23 +2,42 @@
 import SwiftUI
 import Combine
 
+// MARK: - Testable persistence abstraction
+protocol LibraryPersisting {
+    func load() async -> [Movie]?
+    func save(movies: [Movie]) async
+}
+
+// The real persistence already exists; make it conform for free.
+extension LibraryPersistence: LibraryPersisting {}
+
 @MainActor
 final class LibraryStore: ObservableObject {
+    // MARK: - Published State
     @Published private(set) var movies: [Movie] = []
     @Published var isImporting = false
     @Published var progress: Double = 0
     @Published var lastErrors: [String] = []
 
+    // MARK: - Dependencies
     private let client: TMDBClient
-    private let persistence = LibraryPersistence()
+    private let persistence: LibraryPersisting
 
-    init(settings: AppSettings) {
-        self.client = TMDBClient(settings: settings)
-        Task { await loadFromDisk() }
+    // MARK: - Init (inject client & persistence for tests)
+    init(
+        settings: AppSettings,
+        client: TMDBClient? = nil,
+        persistence: LibraryPersisting = LibraryPersistence(),
+        loadOnInit: Bool = true
+    ) {
+        self.client = client ?? TMDBClient(settings: settings)
+        self.persistence = persistence
+        if loadOnInit {
+            Task { await loadFromDisk() }
+        }
     }
 
     // MARK: - Persistence
-
     private func loadFromDisk() async {
         let loaded = await persistence.load() ?? []
         self.movies = loaded
@@ -29,7 +48,6 @@ final class LibraryStore: ObservableObject {
     }
 
     // MARK: - Import
-
     /// Parses pasted lines, searches TMDB, fetches details, and appends to library.
     func importFromPaste(_ text: String) async {
         lastErrors.removeAll()
@@ -66,7 +84,7 @@ final class LibraryStore: ObservableObject {
                 lastErrors.append("Error \"\(line)\": \(error.localizedDescription)")
             }
             step += 1
-            progress = min(1.0, step / total) // ensure Double literal
+            progress = min(1.0, step / total)
         }
 
         // Merge: avoid duplicates by id (prefer new details)
@@ -80,7 +98,8 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - Utilities
 
-    private static func year(from dateStr: String?) -> Int? {
+    // Internal so tests can call it directly.
+    static func year(from dateStr: String?) -> Int? {
         guard let s = dateStr, s.count >= 4, let y = Int(s.prefix(4)) else { return nil }
         return y
     }
