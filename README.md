@@ -1,6 +1,6 @@
 # 🧭 Sift
 
-Sift is a Movie Recommendation App based on movies imported.  Built entirely with **SwiftUI** and **Swift 6.2**.  
+Sift is a **native iOS application** built entirely with **SwiftUI** and **Swift 6.2**.  
 Its core purpose is to **deliver a smooth, modern, GPU-light image and media caching experience**, with a clean architecture and a strong focus on performance and responsiveness.
 
 ---
@@ -27,7 +27,7 @@ Its core purpose is to **deliver a smooth, modern, GPU-light image and media cac
 ## 🧰 Tech Stack
 
 - 🛠 **Language:** Swift 6.2  
-- 🖥 **Platform:** iOS 
+- 🖥 **Platform:** iOS 17+ 
 - 🪟 **UI:** SwiftUI + native Apple frameworks  
 - 🧭 **Architecture:** Lightweight, actor-safe, modular  
 - 💾 **Caching:** NSCache + Disk cache + Downsampling  
@@ -49,3 +49,64 @@ Its core purpose is to **deliver a smooth, modern, GPU-light image and media cac
    ```bash
    git clone https://github.com/yourusername/Sift.git
    cd Sift
+
+	2.	Open in Xcode
+
+xed .
+
+
+	3.	Build & Run
+	•	Select the Sift scheme
+	•	Choose My Mac as the run destination
+	•	Press ⌘R to build and run
+
+That’s it — no external dependencies required. 🏁
+
+⸻
+
+📂 Project Structure
+
+Sift/
+ ├─ App/
+ │  └─ SiftApp.swift
+ ├─ Components/
+ │  ├─ CachedAsyncImage.swift
+ │  └─ Glass primitives & helpers
+ ├─ Services/
+ │  ├─ DiskImageCache.swift
+ │  └─ TMDBClient.swift
+ ├─ Resources/
+ │  └─ Design tokens and assets
+ └─ README.md
+
+
+⸻
+
+🧪 Development Notes
+	•	Optimized for modern Swift concurrency with strict actor isolation.
+	•	No external libraries — everything uses Apple frameworks.
+	•	Image pipeline tuned to avoid layout thrash, animation hitches, and excessive memory usage.
+
+⸻
+
+🛡 License
+
+This project is licensed under the MIT License.
+Feel free to fork, learn, or contribute.
+
+⸻
+
+🙌 Acknowledgements
+	•	Apple for SwiftUI and its modern concurrency model
+	•	TMDB for optional image sources (if you choose to enable them)
+
+⸻
+
+📬 Contact
+
+Maintained by Don Noel
+For questions or contributions, open an issue or pull request.
+
+⸻
+
+Would you like me to make this README sound a bit more recruiter-friendly (i.e., highlight your engineering skills more prominently), or keep it clean and minimal like this version?
