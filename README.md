@@ -1,6 +1,6 @@
 # 🧭 Sift
 
-NOTE:  This application is very much underdeveloment.
+NOTE:  This application is very much under development.
 
 Sift is a **native iOS application** built entirely with **SwiftUI** and **Swift 6.2**.  
 Its core purpose is to **deliver a smooth, modern, GPU-light image and media caching experience**, with a clean architecture and a strong focus on performance and responsiveness.
