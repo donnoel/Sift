@@ -98,11 +98,11 @@ struct CachedAsyncImage: View {
             }
         }
         .transaction { $0.animation = nil } // Disable implicit animations to avoid hitches
-        .onChange(of: url) { _ in uiImage = nil } // Clear stale image
+        .onChangeCompat(of: url) { uiImage = nil } // Clear stale image
         .background(GeometryReader { geo in
             Color.clear
                 .onAppear { updateBucket(for: geo.size) }
-                .onChange(of: geo.size) { updateBucket(for: $0) }
+                .onChangeCompat(of: geo.size) { updateBucket(for: geo.size) }
         })
         .task(id: taskKey) { await load() } // Trigger reload when key changes
     }
@@ -183,6 +183,23 @@ struct CachedAsyncImage: View {
         if let img = await loadFromDiskCacheAndDecode(url: url, bucket: pixelBucket) {
             _ImageDecodeCache.shared.set(img, for: key, cost: decodedCost(img))
             await maybeSetImage(img, for: key)
+        }
+    }
+}
+
+extension View {
+    /// Compatibility wrapper for SwiftUI's onChange that avoids the iOS 17 deprecation
+    /// and keeps behavior consistent across OS versions.
+    @ViewBuilder
+    func onChangeCompat<V: Equatable>(of value: V, perform action: @escaping () -> Void) -> some View {
+        if #available(iOS 17, macOS 14, *) {
+            self.onChange(of: value, initial: false) { _, _ in
+                action()
+            }
+        } else {
+            self.onChange(of: value) { _ in
+                action()
+            }
         }
     }
 }

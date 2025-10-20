@@ -1,4 +1,3 @@
-// PATH: Sift/Services/DiskImageCache.swift
 import Foundation
 import CryptoKit
 
@@ -8,13 +7,17 @@ actor DiskImageCache {
     private let fm = FileManager.default
     private let mem = NSCache<NSURL, NSData>()
     private let ttl: TimeInterval
+    nonisolated private let cacheDir: URL
     private var inflight: [URL: Task<Data?, Never>] = [:]
 
     init(ttlDays: Int = 14) {
         self.ttl = TimeInterval(ttlDays) * 24 * 60 * 60
         mem.countLimit = 200
         mem.totalCostLimit = 64 * 1024 * 1024
-        try? fm.createDirectory(at: cacheDir, withIntermediateDirectories: true, attributes: nil)
+        // Initialize a nonisolated, immutable cache directory path safely during init
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+        self.cacheDir = base.appendingPathComponent("ImageCache", isDirectory: true)
+        try? fm.createDirectory(at: self.cacheDir, withIntermediateDirectories: true, attributes: nil)
     }
 
     /// Memory → Disk → Network (coalesced) with background refresh of stale files.
@@ -95,12 +98,6 @@ actor DiskImageCache {
     }
 
     // MARK: - Internals
-
-    private var cacheDir: URL {
-        fm.urls(for: .cachesDirectory, in: .userDomainMask)
-            .first!
-            .appendingPathComponent("ImageCache", isDirectory: true)
-    }
 
     private func filePath(for url: URL) -> URL {
         let hash = sha256(url.absoluteString)
