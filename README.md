@@ -108,5 +108,3 @@ Maintained by Don Noel
 For questions or contributions, open an issue or pull request.
 
 ⸻
-
-Would you like me to make this README sound a bit more recruiter-friendly (i.e., highlight your engineering skills more prominently), or keep it clean and minimal like this version?
