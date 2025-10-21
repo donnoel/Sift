@@ -96,6 +96,16 @@ final class LibraryStore: ObservableObject {
         isImporting = false
     }
 
+    // MARK: - Maintenance
+    /// Clear the entire on-device library database.
+    func clearAll() async {
+        lastErrors.removeAll()
+        isImporting = false
+        progress = 0
+        movies.removeAll()
+        await saveToDisk()
+    }
+
     // MARK: - Utilities
 
     // Internal so tests can call it directly.

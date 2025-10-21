@@ -13,6 +13,10 @@ struct SettingsView: View {
 
     @State private var pastedTitles: String = ""
 
+    // NEW: confirmation for clearing the library
+    @State private var showClearConfirm: Bool = false
+    @State private var isClearing: Bool = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -21,6 +25,7 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 importCard
+                maintenanceCard   // ← NEW
                 Spacer(minLength: 20)
             }
             .padding(24)
@@ -33,6 +38,21 @@ struct SettingsView: View {
             isKeyHidden = !newValue.isEmpty
         }
         .navigationTitle("Settings")
+        // Confirmation dialog for “Clear Library”
+        .confirmationDialog("Clear Library?",
+                            isPresented: $showClearConfirm,
+                            titleVisibility: .visible) {
+            Button("Delete all movies", role: .destructive) {
+                isClearing = true
+                Task {
+                    await library.clearAll()
+                    isClearing = false
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This removes all movies from your on-device library. This cannot be undone.")
+        }
     }
 
     private var importCard: some View {
@@ -116,5 +136,45 @@ struct SettingsView: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.primary.opacity(0.12), lineWidth: 1))
         .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 8)
     }
-}
 
+    // MARK: - NEW: Library Maintenance
+    private var maintenanceCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "trash").imageScale(.large).foregroundStyle(.secondary)
+                Text("Library Maintenance").font(.headline)
+                Spacer()
+            }
+
+            Text("Remove all movies stored on this device. This action cannot be undone.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button {
+                    showClearConfirm = true
+                } label: {
+                    Label(isClearing ? "Clearing…" : "Clear Library", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .disabled(isClearing)
+                Spacer()
+            }
+        }
+        .padding(16)
+        .background(
+            Group {
+                if reduceTransparency {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(.systemBackground))
+                } else {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.ultraThinMaterial)
+                }
+            }
+        )
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.primary.opacity(0.12), lineWidth: 1))
+        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 8)
+    }
+}
