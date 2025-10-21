@@ -174,7 +174,7 @@ struct SettingsView: View {
                     await library.clearAll()
                     // Unwatch everything in history (works even without a clearAll() API).
                     let ids = Array(store.watched.keys)
-                    ids.forEach { store.markUnwatched($0) }
+                    ids.forEach { store.unwatch($0) }
                 }
             } label: {
                 Label("Clear Library", systemImage: "trash.fill")
@@ -309,7 +309,7 @@ struct SettingsView: View {
     @MainActor
     private func unwatch(_ id: Int) {
         let store = history
-        store.markUnwatched(id)
+        store.unwatch(id)
     }
 
     private func handlePasteAndPreview() {
