@@ -21,6 +21,12 @@ final class WatchHistoryStore: ObservableObject {
         persist()
     }
 
+    /// Remove a movie from history so it returns to recommendation rotation.
+    func markUnwatched(_ id: Int) {
+        watched.removeValue(forKey: id)
+        persist()
+    }
+
     func isCoolingDown(_ id: Int, cooldownDays: Int = 365) -> Bool {
         guard let d = watched[id] else { return false }
         return Date().timeIntervalSince(d) < TimeInterval(cooldownDays) * 24 * 60 * 60
