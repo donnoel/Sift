@@ -10,6 +10,14 @@ struct SettingsView: View {
     @State private var importSheetPresented: Bool = false
     @State private var pasteError: String?
 
+    // App metadata
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+    }
+    private var buildNumber: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+    }
+
     var body: some View {
         NavigationStack {
             Form(content: {
@@ -96,6 +104,19 @@ struct SettingsView: View {
                     } header: {
                         Text("Import Progress")
                     }
+                }
+
+                SwiftUI.Section {
+                    HStack {
+                        Text("Version")
+                        Spacer()
+                        Text("\(appVersion) (\(buildNumber))")
+                            .foregroundStyle(.secondary)
+                            .font(.body.monospaced())
+                            .accessibilityLabel("App version \(appVersion) build \(buildNumber)")
+                    }
+                } header: {
+                    Text("About")
                 }
             })
             .navigationTitle("Settings")
