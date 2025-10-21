@@ -59,7 +59,7 @@ xed .
 
 	3.	Build & Run
 	•	Select the Sift scheme
-	•	Choose My Mac as the run destination
+	•	Choose iPad simulator or a real iPad as the run destination
 	•	Press ⌘R to build and run
 
 That’s it — no external dependencies required. 🏁
