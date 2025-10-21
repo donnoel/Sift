@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 @MainActor
 struct SettingsView: View {
@@ -11,6 +12,7 @@ struct SettingsView: View {
     @State private var importSheetPresented: Bool = false
     @State private var pasteError: String?
     @State private var isPasteErrorPresented: Bool = false
+    @State private var importText: String = ""
 
     // App metadata
     private var appVersion: String {
@@ -25,11 +27,32 @@ struct SettingsView: View {
             settingsForm
                 .navigationTitle("Settings")
                 .onAppear { workingKey = settings.tmdbAPIKey }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        if library.isImporting {
+                            HStack(spacing: 8) {
+                                ProgressView(value: library.progress)
+                                    .progressViewStyle(.circular)
+                                    .frame(width: 18, height: 18)
+                                Text("\(Int((library.progress * 100).rounded()))%")
+                                    .font(.footnote)
+                                    .monospacedDigit()
+                            }
+                        }
+                    }
+                }
         }
         .sheet(isPresented: $importSheetPresented) {
-            ImportPreviewSheet(
-                count: importPreviewCount,
-                confirm: { performPasteImport() }
+            ImportPasteSheet(
+                text: $importText,
+                onConfirm: { text in
+                    importSheetPresented = false
+                    pasteError = nil
+                    isPasteErrorPresented = false
+                    Task { @MainActor in
+                        await library.importFromPaste(text)
+                    }
+                }
             )
         }
         .alert("Paste Failed", isPresented: $isPasteErrorPresented) {
@@ -43,6 +66,9 @@ struct SettingsView: View {
     @ViewBuilder
     private var settingsForm: some View {
         Form {
+            if library.isImporting {
+                importStatusTopSection
+            }
             tmdbSection
             libraryToolsSection
 
@@ -56,6 +82,28 @@ struct SettingsView: View {
 
             watchHistorySection
             aboutSection
+        }
+    }
+
+    @ViewBuilder
+    private var importStatusTopSection: some View {
+        SwiftUI.Section {
+            HStack(spacing: 12) {
+                ProgressView(value: library.progress)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Importing…")
+                        .font(.subheadline).bold()
+                    Text("\(Int((library.progress * 100).rounded()))% complete")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Importing")
+            .accessibilityValue("\(Int((library.progress * 100).rounded())) percent")
+        } header: {
+            Text("Status")
         }
     }
 
@@ -113,8 +161,13 @@ struct SettingsView: View {
             .disabled(settings.tmdbAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button(role: .destructive) {
+                // Capture a strong reference to avoid property-wrapper/dynamicMember inference issues.
+                let store = history
                 Task { @MainActor in
                     await library.clearAll()
+                    // Fallback if WatchHistoryStore has no clearAll(): unwatch everything.
+                    let ids = Array(store.watched.keys)
+                    ids.forEach { store.markUnwatched($0) }
                 }
             } label: {
                 Label("Clear Library", systemImage: "trash.fill")
@@ -238,71 +291,153 @@ struct SettingsView: View {
     }
 
     private func handlePasteAndPreview() {
-        guard let raw = Pasteboard.readString()?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !raw.isEmpty
-        else {
+        // Read plain text from iOS pasteboard (user-initiated via button tap)
+        guard let clipboard = UIPasteboard.general.string else {
+            pasteError = "Clipboard is empty or not text."
+            isPasteErrorPresented = true
+            return
+        }
+        let raw = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
             pasteError = "Clipboard is empty or not text."
             isPasteErrorPresented = true
             return
         }
 
-        let titles = raw
+        importText = raw
+        importPreviewCount = titlesFromText(importText).count
+        importSheetPresented = true
+    }
+
+    // Parse non-empty, trimmed lines as titles
+    private func titlesFromText(_ text: String) -> [String] {
+        text
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+    }
 
-        guard !titles.isEmpty else {
-            pasteError = "No titles found in clipboard text."
+    private func performPasteImport() {
+        guard let clipboard = UIPasteboard.general.string else {
+            pasteError = "Clipboard is empty or not text."
+            isPasteErrorPresented = true
+            return
+        }
+        let raw = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else {
+            pasteError = "Clipboard is empty or not text."
             isPasteErrorPresented = true
             return
         }
 
-        importPreviewCount = titles.count
-        importSheetPresented = true
-    }
-
-    private func performPasteImport() {
-        // TODO: Wire this to the actual LibraryStore import method when available.
+        // Dismiss the preview sheet and kick off the import.
         importSheetPresented = false
         pasteError = nil
         isPasteErrorPresented = false
+
+        Task { @MainActor in
+            await library.importFromPaste(raw)
+        }
     }
 }
 
-// MARK: - Small helper sheet
-private struct ImportPreviewSheet: View {
-    let count: Int
-    let confirm: () -> Void
+// MARK: - Paste + Edit sheet
+private struct ImportPasteSheet: View {
+    @Binding var text: String
+    let onConfirm: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var detent: PresentationDetent = .large
+
+    private var titles: [String] {
+        text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "doc.on.clipboard.fill")
-                .font(.largeTitle)
-                .padding(.top, 12)
-
-            Text("Import \(count) title\(count == 1 ? "" : "s") from Clipboard?")
-                .font(.headline)
-
-            Text("We’ll look them up on TMDB and add matches to your Library.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-
-            HStack(spacing: 12) {
-                Button("Cancel") { dismiss() }
-                    .buttonStyle(.bordered)
-
-                Button("Import") {
-                    dismiss()
-                    confirm()
+        NavigationStack {
+            VStack(spacing: 12) {
+                // Live stats
+                HStack {
+                    Label("\(titles.count) title\(titles.count == 1 ? "" : "s")", systemImage: "list.number")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    if titles.count > 0 {
+                        Text("Preview shows first \(min(10, titles.count))")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .buttonStyle(.borderedProminent)
+
+                // Editable text
+                TextEditor(text: $text)
+                    .font(.system(.body, design: .monospaced))
+                    .lineSpacing(2)
+                    .frame(minHeight: 160, maxHeight: 220)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(.quaternary, lineWidth: 1)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Preview list
+                if !titles.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(titles.prefix(10).enumerated()), id: \.offset) { idx, t in
+                            HStack(alignment: .top, spacing: 8) {
+                                Text("\(idx + 1).")
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 22, alignment: .trailing)
+                                Text(t)
+                                    .font(.body)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(.quaternary, lineWidth: 1)
+                    }
+                } else {
+                    ContentUnavailableView("Nothing to import", systemImage: "doc.on.clipboard", description: Text("Paste or edit the text above. One title per line."))
+                }
+
+                // Actions
+                HStack(spacing: 12) {
+                    Button("Cancel") { dismiss() }
+                        .buttonStyle(.bordered)
+                    Button {
+                        onConfirm(text)
+                        dismiss()
+                    } label: {
+                        Label("Import", systemImage: "arrow.down.doc.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(titles.isEmpty)
+                }
+                .padding(.top, 4)
             }
-            .padding(.bottom, 12)
+            .padding()
+            .navigationTitle("Import from Clipboard")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if let s = UIPasteboard.general.string {
+                            text = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                        }
+                    } label: {
+                        Label("Paste", systemImage: "doc.on.clipboard")
+                    }
+                }
+            }
         }
-        .padding()
-        .presentationDetents([.height(260)])
+        .onAppear { detent = .large }
+        .presentationDetents([.medium, .large], selection: $detent)
     }
 }
