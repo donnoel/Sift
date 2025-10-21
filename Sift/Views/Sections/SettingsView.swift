@@ -7,6 +7,11 @@ struct SettingsView: View {
     @EnvironmentObject private var library: LibraryStore
     @ObservedObject private var history = WatchHistoryStore.shared
 
+    // Size-class awareness for adaptive layouts
+    @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.verticalSizeClass) private var vSize
+    private var isCompactPhone: Bool { hSize == .compact && vSize == .regular }
+
     @State private var workingKey: String = ""
     @State private var importPreviewCount: Int = 0
     @State private var importSheetPresented: Bool = false
@@ -26,6 +31,8 @@ struct SettingsView: View {
         NavigationStack {
             settingsForm
                 .navigationTitle("Settings")
+                .navigationBarTitleDisplayMode(isCompactPhone ? .inline : .automatic)
+                .formStyle(.grouped)
                 .onAppear { workingKey = settings.tmdbAPIKey }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -35,7 +42,7 @@ struct SettingsView: View {
                                     .progressViewStyle(.circular)
                                     .frame(width: 18, height: 18)
                                 Text("\(Int((library.progress * 100).rounded()))%")
-                                    .font(.footnote)
+                                    .font(isCompactPhone ? .caption2 : .footnote)
                                     .monospacedDigit()
                             }
                         }
@@ -94,7 +101,7 @@ struct SettingsView: View {
                     Text("Importing…")
                         .font(.subheadline).bold()
                     Text("\(Int((library.progress * 100).rounded()))% complete")
-                        .font(.footnote)
+                        .font(isCompactPhone ? .caption : .footnote)   // adaptive
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -116,7 +123,7 @@ struct SettingsView: View {
                 SecureField("TMDB API Key", text: $workingKey)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .font(.body.monospaced())
+                    .font(isCompactPhone ? .callout.monospaced() : .body.monospaced()) // adaptive
                     .accessibilityLabel("TMDB API Key")
             }
 
@@ -165,7 +172,7 @@ struct SettingsView: View {
                 let store = history
                 Task { @MainActor in
                     await library.clearAll()
-                    // Fallback if WatchHistoryStore has no clearAll(): unwatch everything.
+                    // Unwatch everything in history (works even without a clearAll() API).
                     let ids = Array(store.watched.keys)
                     ids.forEach { store.markUnwatched($0) }
                 }
@@ -207,9 +214,16 @@ struct SettingsView: View {
                 Text("No watched movies yet.")
                     .foregroundStyle(.secondary)
             } else {
+                // Adaptive metrics for compact phones vs iPad
+                let poster = isCompactPhone ? CGSize(width: 32, height: 48) : CGSize(width: 44, height: 66)
+                let titleFont: Font = isCompactPhone ? .subheadline.weight(.semibold) : .headline
+                let dateFont: Font = isCompactPhone ? .caption : .footnote
+                let rowVSpacing: CGFloat = isCompactPhone ? 6 : 8
+                let rowHSpacing: CGFloat = isCompactPhone ? 10 : 12
+
                 let entries = history.watched.sorted { lhs, rhs in lhs.value > rhs.value }
                 ForEach(entries, id: \.key) { (id, date) in
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: rowHSpacing) {
                         // Poster
                         if let movie = library.movies.first(where: { $0.id == id }) {
                             CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
@@ -218,40 +232,48 @@ struct SettingsView: View {
                                     Image(systemName: "film").foregroundStyle(.secondary)
                                 }
                             }
-                            .frame(width: 44, height: 66)
+                            .frame(width: poster.width, height: poster.height)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         } else {
                             ZStack {
                                 Rectangle().fill(Color(.tertiarySystemFill))
                                 Image(systemName: "film").foregroundStyle(.secondary)
                             }
-                            .frame(width: 44, height: 66)
+                            .frame(width: poster.width, height: poster.height)
                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
 
                         // Texts
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: rowVSpacing) {
                             let title = library.movies.first(where: { $0.id == id })?.title ?? "Movie #\(id)"
                             Text(title)
-                                .font(.headline)
-                                .lineLimit(2)
+                                .font(titleFont)
+                                .lineLimit(isCompactPhone ? 1 : 2)
                             Text(date, style: .date)
-                                .font(.footnote)
+                                .font(dateFont)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
 
-                        // Unwatch
-                        Button {
-                            unwatch(id)
-                        } label: {
-                            Label("Put Back", systemImage: "arrow.uturn.left.circle.fill")
-                                .labelStyle(.titleAndIcon)
+                        // Unwatch button (compact = icon-only)
+                        if isCompactPhone {
+                            Button { unwatch(id) } label: {
+                                Image(systemName: "arrow.uturn.left.circle.fill")
+                            }
+                            .buttonStyle(.bordered)
+                            .labelStyle(.iconOnly)
+                            .accessibilityLabel("Put \(library.movies.first(where: { $0.id == id })?.title ?? "movie") back in rotation")
+                        } else {
+                            Button {
+                                unwatch(id)
+                            } label: {
+                                Label("Put Back", systemImage: "arrow.uturn.left.circle.fill")
+                                    .labelStyle(.titleAndIcon)
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Put \(library.movies.first(where: { $0.id == id })?.title ?? "movie") back in rotation")
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, isCompactPhone ? 3 : 4)
                 }
 
                 // Optional: Clear all history
@@ -346,7 +368,10 @@ private struct ImportPasteSheet: View {
     @Binding var text: String
     let onConfirm: (String) -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var hSize
     @State private var detent: PresentationDetent = .large
+
+    private var isCompactPhone: Bool { hSize == .compact }
 
     private var titles: [String] {
         text
@@ -374,7 +399,8 @@ private struct ImportPasteSheet: View {
                 TextEditor(text: $text)
                     .font(.system(.body, design: .monospaced))
                     .lineSpacing(2)
-                    .frame(minHeight: 160, maxHeight: 220)
+                    .frame(minHeight: isCompactPhone ? 260 : 200,
+                           maxHeight: isCompactPhone ? 300 : 220) // adaptive height
                     .overlay {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .strokeBorder(.quaternary, lineWidth: 1)
@@ -437,7 +463,8 @@ private struct ImportPasteSheet: View {
                 }
             }
         }
-        .onAppear { detent = .large }
-        .presentationDetents([.medium, .large], selection: $detent)
+        .onAppear { detent = .large } // open big by default
+        .presentationDetents(isCompactPhone ? [.large] : [.medium, .large], selection: $detent)
+        .scrollDismissesKeyboard(.interactively)
     }
 }
