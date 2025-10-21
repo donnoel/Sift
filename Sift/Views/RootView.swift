@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @EnvironmentObject private var library: LibraryStore
     @State private var selected: Section = .forYou
 
     var body: some View {
@@ -11,7 +12,7 @@ struct RootView: View {
 
             Group {
                 switch selected {
-                case .forYou:   ForYouView()
+                case .forYou:   ForYouView(libraryProvider: { [library] in library.movies })
                 case .discover: DiscoverView()
                 case .library:  LibraryView()
                 case .settings: SettingsView()

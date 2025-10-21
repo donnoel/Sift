@@ -50,21 +50,7 @@ private struct LibraryMovieDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // Poster
-                    CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
-                        ZStack {
-                            Rectangle().fill(Color(.tertiarySystemFill))
-                            Image(systemName: "photo")
-                                .imageScale(.large)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .aspectRatio(2/3, contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
+                    DetailPoster(url: posterURL(from: movie.posterPath))
 
                     // Title + Meta
                     VStack(alignment: .leading, spacing: 8) {
@@ -76,9 +62,9 @@ private struct LibraryMovieDetailView: View {
                         HStack(spacing: 12) {
                             if let year = movie.year {
                                 HStack(spacing: 6) {
-    Image(systemName: "calendar")
-    Text(verbatim: String(year))
-}
+                                    Image(systemName: "calendar")
+                                    Text(verbatim: String(year))
+                                }
                             }
                             if let rating = movie.rating {
                                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
@@ -149,6 +135,27 @@ private struct LibraryMovieDetailView: View {
     }
 }
 
+private struct DetailPoster: View {
+    let url: URL?
+    var body: some View {
+        CachedAsyncImage(url: url, contentMode: .fill) {
+            ZStack {
+                Rectangle().fill(Color(.tertiarySystemFill))
+                Image(systemName: "photo")
+                    .imageScale(.large)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .aspectRatio(2/3, contentMode: .fit)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+}
+
 private enum SortOption: String, CaseIterable {
     case shuffle, titleAsc, titleDesc
 
@@ -215,20 +222,15 @@ struct LibraryView: View {
                 .frame(height: 0)
 
                 LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(Array(displayedMovies.enumerated()), id: \.1.id) { index, movie in
-                        // Wrap the card in a plain button; keep full-card hit area
-                        Button {
-                            selectedMovie = movie
-                        } label: {
-                            MovieCard(
-                                movie: movie,
-                                reduceTransparency: reduceTransparency,
-                                isFastScrolling: isFastScrolling
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .onAppear { preheatAround(index) }
+                    ForEach(displayedMovies.indices, id: \.self) { index in
+                        let movie = displayedMovies[index]
+                        MovieGridCell(
+                            movie: movie,
+                            reduceTransparency: reduceTransparency,
+                            isFastScrolling: isFastScrolling,
+                            onTap: { selectedMovie = movie },
+                            onAppear: { preheatAround(index) }
+                        )
                     }
                 }
                 .padding(20)
@@ -238,7 +240,7 @@ struct LibraryView: View {
         .transaction { $0.animation = nil }
         .onAppear {
             applySort()
-            let urls = displayedMovies.prefix(24).compactMap { $0.posterURL }
+            let urls = displayedMovies.prefix(24).compactMap { posterURL(from: $0.posterPath) }
             Task { await DiskImageCache.shared.preheat(urls) }
             lastTime = ProcessInfo.processInfo.systemUptime
         }
@@ -248,9 +250,9 @@ struct LibraryView: View {
         .onChange(of: sort) { oldValue, newValue in
               applySort()
           }
-        .onChange(of: sort) { oldValue, newValue in
-              applySort()
-          }
+        .onChange(of: library.movies) { _, _ in
+            applySort()
+        }
         .onDisappear { scrollEndTask?.cancel() }
         .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle("Library")
@@ -333,8 +335,30 @@ struct LibraryView: View {
         let start = index + 1
         let end = min(displayedMovies.count, start + prefetchWindow)
         guard start < end else { return }
-        let urls = displayedMovies[start..<end].compactMap { $0.posterURL }
+        let urls = displayedMovies[start..<end].compactMap { posterURL(from: $0.posterPath) }
         Task { await DiskImageCache.shared.preheat(urls) }
+    }
+}
+
+// Lightweight grid cell for movies
+private struct MovieGridCell: View {
+    let movie: Movie
+    let reduceTransparency: Bool
+    let isFastScrolling: Bool
+    let onTap: () -> Void
+    let onAppear: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            MovieCard(
+                movie: movie,
+                reduceTransparency: reduceTransparency,
+                isFastScrolling: isFastScrolling
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onAppear(perform: onAppear)
     }
 }
 
@@ -348,7 +372,7 @@ private struct MovieCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Poster — stable 2:3 area (height derived from width)
-            CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
+            CachedAsyncImage(url: posterURL(from: movie.posterPath), contentMode: .fill) {
                 ZStack {
                     Rectangle().fill(Color(.tertiarySystemFill))
                     Image(systemName: "photo")
@@ -405,17 +429,7 @@ private struct MovieCard: View {
         }
         .transaction { $0.animation = nil }
         .padding(12)
-        .background(
-            Group {
-                if reduceTransparency || isFastScrolling {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(Color(.secondarySystemBackground))
-                } else {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                }
-            }
-        )
+        .background(cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
@@ -426,4 +440,26 @@ private struct MovieCard: View {
             x: 0, y: isFastScrolling ? 4 : 5
         )
     }
+    @ViewBuilder
+    private var cardBackground: some View {
+        if reduceTransparency || isFastScrolling {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+        } else {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(.ultraThinMaterial)
+        }
+    }
 }
+
+fileprivate func posterURL(from path: String?) -> URL? {
+    guard let p = path, !p.isEmpty else { return nil }
+    if p.hasPrefix("http://") || p.hasPrefix("https://") {
+        return URL(string: p)
+    }
+    // Compose a TMDB image URL when given a relative path like "/abc.jpg"
+    let base = "https://image.tmdb.org/t/p/w500"
+    let full = p.hasPrefix("/") ? base + p : base + "/" + p
+    return URL(string: full)
+}
+

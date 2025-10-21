@@ -1,6 +1,7 @@
 // PATH: Sift/Components/CachedAsyncImage.swift
 import SwiftUI
 import ImageIO
+import Combine
 
 // MARK: - Platform Abstractions
 #if os(iOS)
