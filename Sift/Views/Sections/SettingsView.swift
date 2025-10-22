@@ -349,76 +349,20 @@ struct SettingsView: View {
                 Text("No watched movies yet.")
                     .foregroundStyle(.secondary)
             } else {
-                // Adaptive metrics for compact phones vs iPad
-                let poster = isCompactPhone ? CGSize(width: 32, height: 48) : CGSize(width: 44, height: 66)
-                let titleFont: Font = isCompactPhone ? .subheadline.weight(.semibold) : .headline
-                let dateFont: Font = isCompactPhone ? .caption : .footnote
-                let rowVSpacing: CGFloat = isCompactPhone ? 6 : 8
-                let rowHSpacing: CGFloat = isCompactPhone ? 10 : 12
-
-                let entries = history.watched.sorted { lhs, rhs in lhs.value > rhs.value }
-                ForEach(entries, id: \.key) { (id, date) in
-                    HStack(alignment: .top, spacing: rowHSpacing) {
-                        // Poster
-                        if let movie = library.movies.first(where: { $0.id == id }) {
-                            CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
-                                ZStack {
-                                    Rectangle().fill(Color(.tertiarySystemFill))
-                                    Image(systemName: "film").foregroundStyle(.secondary)
-                                }
-                            }
-                            .frame(width: poster.width, height: poster.height)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        } else {
-                            ZStack {
-                                Rectangle().fill(Color(.tertiarySystemFill))
-                                Image(systemName: "film").foregroundStyle(.secondary)
-                            }
-                            .frame(width: poster.width, height: poster.height)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        }
-
-                        // Texts
-                        VStack(alignment: .leading, spacing: rowVSpacing) {
-                            let title = library.movies.first(where: { $0.id == id })?.title ?? "Movie #\(id)"
-                            Text(title)
-                                .font(titleFont)
-                                .lineLimit(isCompactPhone ? 1 : 2)
-                            Text(date, style: .date)
-                                .font(dateFont)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-
-                        // Unwatch button (compact = icon-only)
-                        if isCompactPhone {
-                            Button { unwatch(id) } label: {
-                                Image(systemName: "arrow.uturn.left.circle.fill")
-                            }
-                            .buttonStyle(.bordered)
-                            .labelStyle(.iconOnly)
-                            .accessibilityLabel("Put \(library.movies.first(where: { $0.id == id })?.title ?? "movie") back in rotation")
-                        } else {
-                            Button {
-                                unwatch(id)
-                            } label: {
-                                Label("Put Back", systemImage: "arrow.uturn.left.circle.fill")
-                                    .labelStyle(.titleAndIcon)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    .padding(.vertical, isCompactPhone ? 3 : 4)
-                }
-
-                // Optional: Clear all history
-                Button(role: .destructive) {
-                    let ids = Array(history.watched.keys)
-                    ids.forEach { unwatch($0) }
+                NavigationLink {
+                    WatchedHistoryView()
                 } label: {
-                    Label("Clear Watch History", systemImage: "trash")
+                    HStack(spacing: 12) {
+                        Label("Watched History", systemImage: "clock.arrow.circlepath")
+                        Spacer()
+                        Text("\(history.watched.count)")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right")
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                .padding(.top, 4)
+                .accessibilityLabel("Open full watched history")
             }
         } header: {
             Text("Watch History")
@@ -494,6 +438,97 @@ struct SettingsView: View {
 
         Task { @MainActor in
             await library.importFromPaste(raw)
+        }
+    }
+}
+
+// MARK: - Full Watched List
+private struct WatchedHistoryView: View {
+    @EnvironmentObject private var library: LibraryStore
+    @ObservedObject private var history = WatchHistoryStore.shared
+    @Environment(\.horizontalSizeClass) private var hSize
+    private var isCompactPhone: Bool { hSize == .compact }
+
+    var body: some View {
+        // Use List for performance with larger histories
+        List {
+            let poster = isCompactPhone ? CGSize(width: 36, height: 54) : CGSize(width: 44, height: 66)
+            let titleFont: Font = isCompactPhone ? .subheadline.weight(.semibold) : .headline
+            let dateFont: Font = isCompactPhone ? .caption : .footnote
+            let rowVSpacing: CGFloat = isCompactPhone ? 6 : 8
+            let rowHSpacing: CGFloat = isCompactPhone ? 10 : 12
+
+            let sorted = history.watched.sorted { $0.value > $1.value }
+
+            ForEach(sorted, id: \.key) { (id, date) in
+                HStack(alignment: .top, spacing: rowHSpacing) {
+                    // Poster
+                    if let movie = library.movies.first(where: { $0.id == id }) {
+                        CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
+                            ZStack {
+                                Rectangle().fill(Color(.tertiarySystemFill))
+                                Image(systemName: "film").foregroundStyle(.secondary)
+                            }
+                        }
+                        .frame(width: poster.width, height: poster.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    } else {
+                        ZStack {
+                            Rectangle().fill(Color(.tertiarySystemFill))
+                            Image(systemName: "film").foregroundStyle(.secondary)
+                        }
+                        .frame(width: poster.width, height: poster.height)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+
+                    // Texts
+                    VStack(alignment: .leading, spacing: rowVSpacing) {
+                        let title = library.movies.first(where: { $0.id == id })?.title ?? "Movie #\(id)"
+                        Text(title)
+                            .font(titleFont)
+                            .lineLimit(isCompactPhone ? 1 : 2)
+                        Text(date, style: .date)
+                            .font(dateFont)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+
+                    // Unwatch
+                    if isCompactPhone {
+                        Button {
+                            history.unwatch(id)
+                        } label: {
+                            Image(systemName: "arrow.uturn.left.circle.fill")
+                        }
+                        .buttonStyle(.bordered)
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Put \(library.movies.first(where: { $0.id == id })?.title ?? "movie") back in rotation")
+                    } else {
+                        Button {
+                            history.unwatch(id)
+                        } label: {
+                            Label("Put Back", systemImage: "arrow.uturn.left.circle.fill")
+                                .labelStyle(.titleAndIcon)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .padding(.vertical, isCompactPhone ? 3 : 4)
+            }
+        }
+        .navigationTitle("Watched History")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !history.watched.isEmpty {
+                    Button(role: .destructive) {
+                        let ids = Array(history.watched.keys)
+                        ids.forEach { history.unwatch($0) }
+                    } label: {
+                        Label("Clear All", systemImage: "trash")
+                    }
+                    .accessibilityLabel("Clear all watched history")
+                }
+            }
         }
     }
 }
