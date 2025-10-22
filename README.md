@@ -106,7 +106,6 @@ Feel free to fork, learn, or contribute.
 
 📬 Contact
 
-Maintained by donnoel & Bella Ai
-For questions or contributions, open an issue or pull request.
+Maintained by donnoel & Bella Ai.  For questions or contributions, open an issue or pull request.
 
 ⸻
