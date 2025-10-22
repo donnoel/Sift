@@ -11,9 +11,16 @@ struct GlassTabBar: View {
     @Binding var selected: Section
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Namespace private var selNS
 
     private let barCorner: CGFloat = 22
+    
+    // Hide text on iPhone in portrait (compact width, regular height)
+    private var shouldShowText: Bool {
+        !(horizontalSizeClass == .compact && verticalSizeClass == .regular)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -33,13 +40,16 @@ struct GlassTabBar: View {
                             Image(systemName: tab.systemImage)
                                 .imageScale(.large)
                                 .font(.system(size: 18, weight: .semibold))
-                            Text(tab.title)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .lineLimit(1)
-                                .opacity(selected == tab ? 1 : 0.75)
+                            if shouldShowText {
+                                Text(tab.title)
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    .lineLimit(1)
+                                    .opacity(selected == tab ? 1 : 0.75)
+                            }
                         }
                         .foregroundStyle(selected == tab ? .primary : .secondary)
-                        .padding(.horizontal, 14).padding(.vertical, 10)
+                        .padding(.horizontal, shouldShowText ? 14 : 12)
+                        .padding(.vertical, 10)
                         .background(selectionBackground(for: tab))
                         .anchorPreference(key: TabItemBoundsKey.self, value: .bounds) { [tab: $0] }
                     }
