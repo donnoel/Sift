@@ -70,7 +70,9 @@ No extra dependencies. Hit the ground running. 🏁
 Open Settings, paste lines like:
 
 Alien (1979)
+
 Heat 1995
+
 The Thing
 
 Sift finds the best matches, fetches details/posters, shows progress, and lists any misses.
