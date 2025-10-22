@@ -133,7 +133,7 @@ Sift/
 
 🛡 License
 
-MIT — have fun, learn, and build.
+MIT
 
 ⸻
 
