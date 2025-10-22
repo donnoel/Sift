@@ -77,6 +77,7 @@ struct SettingsView: View {
             if library.isImporting {
                 importStatusTopSection
             }
+            statsTopSection
             tmdbSection
             libraryToolsSection
 
@@ -112,6 +113,82 @@ struct SettingsView: View {
             .accessibilityValue("\(Int((library.progress * 100).rounded())) percent")
         } header: {
             Text("Status")
+        }
+    }
+
+    @ViewBuilder
+    private var statsTopSection: some View {
+        SwiftUI.Section {
+            let libraryCount = library.movies.count
+            let libraryIDs = Set(library.movies.map(\.id))
+            let watchedTotal = history.watched.count
+            let watchedInLibrary = history.watched.keys.filter { libraryIDs.contains($0) }.count
+            let unwatched = max(0, libraryCount - watchedInLibrary)
+
+            // Recent window
+            let recentDays = 30
+            let cutoff = Calendar.current.date(byAdding: .day, value: -recentDays, to: Date()) ?? Date.distantPast
+            let recentWatched = history.watched.values.filter { $0 >= cutoff }.count
+            let mostRecent = history.watched.values.max()
+
+            // Row: Library size
+            HStack {
+                Label("Library", systemImage: "square.stack.3d.up")
+                Spacer()
+                Text("\(libraryCount)")
+                    .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            // Row: Watched (in library)
+            HStack {
+                Label("Watched (in Library)", systemImage: "eye.fill")
+                Spacer()
+                Text("\(watchedInLibrary)")
+                    .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            // Row: Unwatched
+            HStack {
+                Label("Unwatched", systemImage: "eye.slash")
+                Spacer()
+                Text("\(unwatched)")
+                    .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            // Row: Watched recently
+            HStack {
+                Label("Watched (last \(recentDays)d)", systemImage: "clock")
+                Spacer()
+                Text("\(recentWatched)")
+                    .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
+                    .monospacedDigit()
+            }
+
+            // Row: Most recent watch date (optional)
+            if let mostRecent {
+                HStack {
+                    Label("Most Recent Watch", systemImage: "calendar")
+                    Spacer()
+                    Text(mostRecent, style: .date)
+                        .font(isCompactPhone ? .footnote : .body)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Row: iCloud sync status
+            HStack {
+                Label("iCloud Sync", systemImage: "icloud")
+                Spacer()
+                Text(history.cloudSyncEnabled ? "On" : "Off")
+                    .font(isCompactPhone ? .footnote.weight(.semibold) : .body.weight(.semibold))
+                    .foregroundStyle(history.cloudSyncEnabled ? .primary : .secondary)
+                    .accessibilityLabel("iCloud sync \(history.cloudSyncEnabled ? "on" : "off")")
+            }
+        } header: {
+            Text("Stats")
         }
     }
 
