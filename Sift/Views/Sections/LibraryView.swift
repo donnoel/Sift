@@ -1,3 +1,4 @@
+// PATH: Sift/Views/Sections/LibraryView.swift
 import SwiftUI
 
 @MainActor
@@ -5,7 +6,11 @@ struct LibraryView: View {
     @EnvironmentObject private var library: LibraryStore
 
     @State private var query: String = ""
+    @State private var debouncedQuery: String = ""          // <- debounced for smooth filtering
     @State private var sort: Sort = .title
+    @State private var debounceTask: Task<Void, Never>? = nil
+
+    private let debounceDelayNS: UInt64 = 250_000_000       // ~250ms
 
     enum Sort: String, CaseIterable, Identifiable {
         case title, year, rating
@@ -13,8 +18,8 @@ struct LibraryView: View {
 
         var label: String {
             switch self {
-            case .title: return "Title A–Z"
-            case .year:  return "Year"
+            case .title:  return "Title A–Z"
+            case .year:   return "Year"
             case .rating: return "Rating"
             }
         }
@@ -39,6 +44,18 @@ struct LibraryView: View {
                     }
                 }
         }
+        // Debounce changes to the query so the UI doesn't thrash on every keystroke
+        .onChange(of: query) { newValue in
+            debounceTask?.cancel()
+            debounceTask = Task { @MainActor in
+                try? await Task.sleep(nanoseconds: debounceDelayNS)
+                if !Task.isCancelled {
+                    debouncedQuery = newValue
+                }
+            }
+        }
+        .onAppear { debouncedQuery = query }
+        .onDisappear { debounceTask?.cancel() }
     }
 
     private var content: some View {
@@ -70,26 +87,76 @@ struct LibraryView: View {
     }
 
     private var filteredAndSortedMovies: [Movie] {
-        let base = library.movies
-        let filtered: [Movie]
-        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            filtered = base
-        } else {
-            let q = query.lowercased()
-            filtered = base.filter { m in
-                m.title.lowercased().contains(q)
-                || (m.year.map { "\($0)" }.map { $0.contains(q) } ?? false)
+        // Take a snapshot with original indexes for stable tie-breaking
+        let enumerated = Array(library.movies.enumerated())
+
+        // Normalize once
+        let q = normalize(debouncedQuery)
+
+        // Filter: diacritic/case-insensitive title contains; allow year text match too
+        let filtered = enumerated.filter { (_, m) in
+            guard !q.isEmpty else { return true }
+            if normalize(m.title).contains(q) { return true }
+            if let y = m.year, String(y).contains(q) { return true }
+            return false
+        }
+
+        let locale = Locale.autoupdatingCurrent
+
+        // Sort with stability guarantees (original index as final tiebreaker)
+        let sorted: [(offset: Int, element: Movie)]
+        switch sort {
+        case .title:
+            sorted = filtered.sorted { lhs, rhs in
+                let l = lhs.element.title
+                let r = rhs.element.title
+                let cmp = l.compare(r,
+                                    options: [.caseInsensitive, .diacriticInsensitive],
+                                    range: nil,
+                                    locale: locale)
+                if cmp != .orderedSame { return cmp == .orderedAscending }
+                return lhs.offset < rhs.offset
+            }
+
+        case .year:
+            sorted = filtered.sorted { lhs, rhs in
+                let ly = lhs.element.year ?? Int.min
+                let ry = rhs.element.year ?? Int.min
+                if ly != ry { return ly > ry } // desc, newest first
+                let cmp = lhs.element.title.compare(rhs.element.title,
+                                                    options: [.caseInsensitive, .diacriticInsensitive],
+                                                    range: nil,
+                                                    locale: locale)
+                if cmp != .orderedSame { return cmp == .orderedAscending }
+                return lhs.offset < rhs.offset
+            }
+
+        case .rating:
+            sorted = filtered.sorted { lhs, rhs in
+                let lr = lhs.element.rating ?? -1.0
+                let rr = rhs.element.rating ?? -1.0
+                if lr != rr { return lr > rr } // desc, highest first
+                let cmp = lhs.element.title.compare(rhs.element.title,
+                                                    options: [.caseInsensitive, .diacriticInsensitive],
+                                                    range: nil,
+                                                    locale: locale)
+                if cmp != .orderedSame { return cmp == .orderedAscending }
+                return lhs.offset < rhs.offset
             }
         }
 
-        switch sort {
-        case .title:
-            return filtered.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        case .year:
-            return filtered.sorted { ( $0.year ?? 0 ) > ( $1.year ?? 0 ) }
-        case .rating:
-            return filtered.sorted { ( $0.rating ?? 0 ) > ( $1.rating ?? 0 ) }
-        }
+        return sorted.map { $0.element }
+    }
+
+    // MARK: - Normalization helper
+
+    /// Lowercased + diacritic-insensitive, collapses whitespace.
+    private func normalize(_ s: String) -> String {
+        let folded = s.folding(options: [.diacriticInsensitive, .caseInsensitive],
+                               locale: .autoupdatingCurrent)
+        return folded
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
