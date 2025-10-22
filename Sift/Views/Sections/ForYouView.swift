@@ -58,6 +58,9 @@ private struct MovieHeroCard: View {
     let movie: Movie
     var onWatched: () -> Void
 
+    @Environment(\.horizontalSizeClass) private var hSize
+    private var isCompactPhone: Bool { hSize == .compact }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PosterImage(path: movie.posterPath)
@@ -68,7 +71,25 @@ private struct MovieHeroCard: View {
                 Text(o).font(.callout).lineLimit(4)
             }
             HStack {
-                Button("Mark Watched") { onWatched() }
+                if isCompactPhone {
+                    Button {
+                        onWatched()
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .accessibilityLabel("Mark \(movie.title) watched")
+                } else {
+                    Button {
+                        onWatched()
+                    } label: {
+                        Label("Watched", systemImage: "checkmark.circle.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
                 Spacer()
             }
         }
@@ -84,8 +105,18 @@ private struct MoviePosterCard: View {
             PosterImage(path: movie.posterPath)
                 .frame(width: 140, height: 210)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-            Text(movie.title).font(.subheadline).lineLimit(2)
-            Button("Watched") { onWatched() }.font(.caption)
+            Text(movie.title)
+                .font(.subheadline)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Button {
+                onWatched()
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+            .accessibilityLabel("Mark \(movie.title) watched")
         }
         .frame(width: 140)
     }
