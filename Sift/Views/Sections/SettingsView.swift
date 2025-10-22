@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var pasteError: String?
     @State private var isPasteErrorPresented: Bool = false
     @State private var importText: String = ""
+    @State private var isSyncingNow: Bool = false
 
     // App metadata
     private var appVersion: String {
@@ -127,22 +128,54 @@ struct SettingsView: View {
                     .accessibilityLabel("TMDB API Key")
             }
 
-            HStack(spacing: 12) {
-                Button {
-                    settings.tmdbAPIKey = workingKey.trimmingCharacters(in: .whitespacesAndNewlines)
-                } label: {
-                    Label("Save Key", systemImage: "tray.and.arrow.down.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(workingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            if isCompactPhone {
+                VStack(spacing: 8) {
+                    Button {
+                        settings.tmdbAPIKey = workingKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    } label: {
+                        Label("Save Key", systemImage: "tray.and.arrow.down.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(workingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                Button {
-                    workingKey = settings.tmdbAPIKey
-                } label: {
-                    Label("Revert", systemImage: "arrow.uturn.backward")
+                    Button {
+                        workingKey = settings.tmdbAPIKey
+                    } label: {
+                        Label("Revert", systemImage: "arrow.uturn.backward")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .disabled(workingKey == settings.tmdbAPIKey)
                 }
-                .buttonStyle(.bordered)
-                .disabled(workingKey == settings.tmdbAPIKey)
+            } else {
+                HStack(spacing: 12) {
+                    Button {
+                        settings.tmdbAPIKey = workingKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    } label: {
+                        Label("Save Key", systemImage: "tray.and.arrow.down.fill")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(workingKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    Button {
+                        workingKey = settings.tmdbAPIKey
+                    } label: {
+                        Label("Revert", systemImage: "arrow.uturn.backward")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .disabled(workingKey == settings.tmdbAPIKey)
+
+                    Spacer()
+                }
             }
 
             if settings.tmdbAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -162,9 +195,12 @@ struct SettingsView: View {
             Button {
                 handlePasteAndPreview()
             } label: {
-                Label("Paste & Preview Import", systemImage: "doc.on.clipboard.fill")
+                Label("Import", systemImage: "doc.on.clipboard.fill")
+                    .labelStyle(.titleAndIcon)
             }
             .buttonStyle(.bordered)
+            .controlSize(isCompactPhone ? .regular : .large)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .disabled(settings.tmdbAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button(role: .destructive) {
@@ -178,10 +214,32 @@ struct SettingsView: View {
                 }
             } label: {
                 Label("Clear Library", systemImage: "trash.fill")
+                    .labelStyle(.titleAndIcon)
             }
+            .buttonStyle(.bordered)
+            .controlSize(isCompactPhone ? .regular : .large)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .disabled(library.movies.isEmpty)
             .accessibilityLabel("Clear library")
             .accessibilityHint("Deletes all saved movies")
+
+            Toggle(isOn: Binding(get: {
+                history.cloudSyncEnabled
+            }, set: { newValue in
+                history.setCloudSyncEnabled(newValue)
+            })) {
+                Label("iCloud sync for Watched", systemImage: "icloud")
+            }
+
+            Button {
+                isSyncingNow = true
+                history.syncNow()
+                isSyncingNow = false
+            } label: {
+                Label(isSyncingNow ? "Syncing…" : "Sync Now", systemImage: "arrow.clockwise.circle")
+            }
+            .disabled(!history.cloudSyncEnabled)
+            .accessibilityLabel("Sync watched list with iCloud now")
         } header: {
             Text("Library Tools")
         }

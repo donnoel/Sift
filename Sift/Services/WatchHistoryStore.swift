@@ -2,9 +2,9 @@ import Foundation
 import Combine
 
 /// Syncs the watched list locally (UserDefaults) and across devices using iCloud Key-Value Store.
-/// - Uses JSON-encoded Data under a single key in both stores.
+/// - Stores JSON Data under a single key in both stores.
 /// - Merges inbound iCloud changes by taking the *latest* date per movie ID.
-/// - Calls `NSUbiquitousKeyValueStore.default.synchronize()` on init and after writes.
+/// - Provides a user-toggleable `cloudSyncEnabled` flag and a manual `syncNow()` action.
 @MainActor
 final class WatchHistoryStore: ObservableObject {
     static let shared = WatchHistoryStore()
@@ -14,38 +14,51 @@ final class WatchHistoryStore: ObservableObject {
     /// movieID : lastSeen
     @Published private(set) var watched: [MovieID: Date] = [:]
 
+    /// Whether iCloud KVS sync is enabled (persisted in UserDefaults; default true).
+    @Published var cloudSyncEnabled: Bool = true
+
     // Storage keys
-    private let localKey = "watch_history_store_v1"  // existing local key
-    private let cloudKey = "watch_history_store_v1"  // use the same for iCloud KVS
+    private let localKey = "watch_history_store_v1"
+    private let cloudKey = "watch_history_store_v1"
+    private let syncEnabledKey = "watch_history_icloud_sync_enabled"
+
+    /// Single iCloud KVS store instance
+    private let store = NSUbiquitousKeyValueStore.default
 
     private var ubiqObserver: NSObjectProtocol?
 
     private init() {
-        // 1) Load local first so UI is snappy
+        // Load local first so UI is snappy
         if let local = Self.decodeLocal(UserDefaults.standard.data(forKey: localKey)) {
             watched = local
         }
 
-        // 2) Pull from iCloud and merge
-        let store = NSUbiquitousKeyValueStore.default
-        store.synchronize() // ask iCloud for the latest immediately
+        // Load sync toggle; default to true if unset
+        if UserDefaults.standard.object(forKey: syncEnabledKey) == nil {
+            UserDefaults.standard.set(true, forKey: syncEnabledKey)
+        }
+        cloudSyncEnabled = UserDefaults.standard.bool(forKey: syncEnabledKey)
 
-        if let cloudData = store.data(forKey: cloudKey),
-           let cloud = Self.decodeLocal(cloudData) {
-            mergeInCloud(cloud)
+        // Pull from iCloud (if enabled) and merge
+        if cloudSyncEnabled {
+            store.synchronize() // ask iCloud for latest immediately
+            if let cloudData = store.data(forKey: cloudKey),
+               let cloud = Self.decodeLocal(cloudData) {
+                mergeInCloud(cloud)
+            }
         }
 
-        // 3) Listen for remote changes and merge
+        // Listen for remote changes and merge (only when enabled)
         ubiqObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: store,
             queue: .main
         ) { [weak self] note in
             guard let self else { return }
-            // Only care about our key
+            guard self.cloudSyncEnabled else { return }
             if let changedKeys = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
                changedKeys.contains(self.cloudKey),
-               let data = store.data(forKey: self.cloudKey),
+               let data = self.store.data(forKey: self.cloudKey),
                let incoming = Self.decodeLocal(data) {
                 self.mergeInCloud(incoming)
             }
@@ -75,23 +88,55 @@ final class WatchHistoryStore: ObservableObject {
         persistAll()
     }
 
-    /// A convenience you already had — unchanged behavior.
+    /// Example convenience you already had — unchanged behavior.
     func isCoolingDown(_ id: MovieID, cooldownDays: Int = 365) -> Bool {
         guard let d = watched[id] else { return false }
         return Date().timeIntervalSince(d) < TimeInterval(cooldownDays) * 24 * 60 * 60
     }
 
+    /// Toggle iCloud sync at runtime. When enabling, push local → iCloud and then pull/merge once.
+    func setCloudSyncEnabled(_ enabled: Bool) {
+        guard enabled != cloudSyncEnabled else { return }
+        cloudSyncEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: syncEnabledKey)
+
+        if enabled {
+            // Push current local state up
+            if let data = Self.encodeLocal(watched) {
+                store.set(data, forKey: cloudKey)
+            }
+            store.synchronize()
+
+            // Pull and merge to converge across devices
+            if let data = store.data(forKey: cloudKey),
+               let incoming = Self.decodeLocal(data) {
+                mergeInCloud(incoming)
+            }
+        }
+        // If disabled: no-op; we’ll stop writing to iCloud and ignore incoming changes
+    }
+
+    /// Manually trigger a one-shot sync/merge from iCloud (no-op if disabled).
+    func syncNow() {
+        guard cloudSyncEnabled else { return }
+        store.synchronize()
+        if let data = store.data(forKey: cloudKey),
+           let incoming = Self.decodeLocal(data) {
+            mergeInCloud(incoming)
+        }
+    }
+
     // MARK: - Persistence & Merge
 
-    /// Persist to local and iCloud, then push a sync.
+    /// Persist to local and (if enabled) iCloud; then push a sync.
     private func persistAll() {
         // Local
         if let data = Self.encodeLocal(watched) {
             UserDefaults.standard.set(data, forKey: localKey)
         }
 
-        // iCloud KVS
-        let store = NSUbiquitousKeyValueStore.default
+        // iCloud KVS (if enabled)
+        guard cloudSyncEnabled else { return }
         if let data = Self.encodeLocal(watched) {
             store.set(data, forKey: cloudKey)
         }
@@ -115,11 +160,7 @@ final class WatchHistoryStore: ObservableObject {
             }
         }
 
-        // Also handle deletions propagated from another device:
-        // If the cloud has *fewer* keys and some of ours are older than the cloud’s max,
-        // that usually indicates a deliberate removal. If you want hard deletions to sync,
-        // uncomment the block below to mirror cloud exactly (authoritative cloud).
-        //
+        // Optional: cloud-authoritative deletions (off by default).
         // if incoming.count < merged.count {
         //     for key in merged.keys where incoming[key] == nil {
         //         merged.removeValue(forKey: key)
@@ -129,7 +170,8 @@ final class WatchHistoryStore: ObservableObject {
 
         if changed {
             watched = merged
-            persistAll() // write the merged state back locally and to iCloud
+            // Write merged state back to local and (if enabled) iCloud
+            persistAll()
         }
     }
 
