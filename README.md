@@ -1,111 +1,143 @@
-# 🧭 Sift
+🧭 Sift
 
-NOTE:  This application is very much under development.
+Native SwiftUI app focused on a fast, modern, GPU-light movie library experience.
+Still under active development, but already fun to play with.
 
-Sift is a **native iOS application** built entirely with **SwiftUI** and **Swift 6.2**.  
-Its core purpose is to **deliver a smooth, modern, GPU-light image and media caching experience**, with a clean architecture and a strong focus on performance and responsiveness.
+Sift helps you build a personal movie library powered by TMDB. Paste a list of titles, let Sift find the best matches, fetch details/posters, and render a smooth library you can sort and search instantly.
 
----
+⸻
 
-## ✨ Features
+✨ Highlights
+	•	TMDB smart search matching (exact/near-title + year proximity + rating tiebreaker)
+	•	One-shot image configuration caching (stable poster base URL + optimal size)
+	•	Fast library UI: debounced search, locale/diacritic-aware filters, and stable sorting
+	•	Import you can trust: progress indicator, error list, and belt-and-suspenders de-dupe
+	•	100% SwiftUI, Swift 6.2, no third-party dependencies
+	•	GPU-light rendering, responsive even on big libraries
 
-- 🖼 **Intelligent Image Caching**  
-  Efficient, disk-backed and memory-backed image caching for fast, stutter-free rendering.
+⸻
 
-- 🚀 **Downsampling & Decoding**  
-  On-the-fly image downsampling and decoded image caching for sharp visuals without overloading the GPU.
+🧰 Tech Stack
+	•	Language: Swift 6.2
+	•	UI: SwiftUI (no external UI libraries)
+	•	Platform: iOS 17+
+	•	Networking: URLSession (async/await)
+	•	Caching: Disk + in-memory (posters), plus TMDB image config cache
 
-- 🧭 **Modern Concurrency**  
-  Async/await architecture built with Swift 6 actor isolation in mind.
+⸻
 
-- 💻 **iOS Native UI**  
-  100% SwiftUI — no third-party dependencies. Everything integrates seamlessly with system UI and scale factors.
+📦 Requirements
+	•	macOS 15.0+
+	•	Xcode 16+
+	•	iOS 17+ simulator or device
+	•	A TMDB API key (free) for fetching metadata and posters
 
-- 🧪 **Deterministic Performance**  
-  Designed to minimize overdraw, eliminate unnecessary animations, and run smoothly even under load.
+⸻
 
----
+🚀 Getting Started
+	1.	Clone
 
-## 🧰 Tech Stack
+git clone https://github.com/yourusername/Sift.git
+cd Sift
 
-- 🛠 **Language:** Swift 6.2  
-- 🖥 **Platform:** iOS 17+ 
-- 🪟 **UI:** SwiftUI + native Apple frameworks  
-- 🧭 **Architecture:** Lightweight, actor-safe, modular  
-- 💾 **Caching:** NSCache + Disk cache + Downsampling  
-- 🌐 **Networking:** URLSession with async/await
-
----
-
-## 📦 Requirements
-
-- macOS 15.0 or later  
-- Xcode 16+  
-- Swift 6.2 toolchain
-
----
-
-## 🧑‍💻 Getting Started
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/yourusername/Sift.git
-   cd Sift
-
-	2.	Open in Xcode
+	2.	Open
 
 xed .
 
+	3.	Configure TMDB
 
-	3.	Build & Run
+	•	Launch the app
+	•	Go to Settings → TMDB API Key
+	•	Paste your key (create one at themoviedb.org if you don’t have it)
+
+	4.	Build & Run
+
 	•	Select the Sift scheme
-	•	Choose iPad simulator or a real iPad as the run destination
-	•	Press ⌘R to build and run
+	•	Choose an iPhone/iPad simulator (or device)
+	•	Press ⌘R
 
-That’s it — no external dependencies required. 🏁
+No extra dependencies. Hit the ground running. 🏁
 
 ⸻
 
-📂 Project Structure
+🧪 Using Sift (quick tour)
+	•	Import
+Open Settings, paste lines like:
+
+Alien (1979)
+Heat 1995
+The Thing
+
+Sift finds the best matches, fetches details/posters, shows progress, and lists any misses.
+
+	•	Browse
+The Library grid is stutter-free with cached posters.
+	•	Search
+Start typing—Sift waits a beat (debounce), then filters using locale/diacritic-aware matching.
+	•	Sort
+Use the top-right menu to switch: Title A–Z, Year, Rating (stable and deterministic).
+
+⸻
+
+🏗 Project Structure
 
 Sift/
  ├─ App/
- │  └─ SiftApp.swift
- ├─ Components/
- │  ├─ CachedAsyncImage.swift
- │  └─ Glass primitives & helpers
+ │   └─ SiftApp.swift (entry) / AppContainer
+ ├─ Views/
+ │   ├─ Sections/
+ │   │   └─ LibraryView.swift (debounced search, stable sort)
+ │   └─ Components/ (cards, poster view, etc.)
+ ├─ Stores/
+ │   └─ LibraryStore.swift (import, progress, de-dupe, persistence)
  ├─ Services/
- │  ├─ DiskImageCache.swift
- │  └─ TMDBClient.swift
+ │   ├─ TMDBClient.swift (ranked matching, image config cache)
+ │   └─ DiskImageCache.swift (on-disk + memory poster caching)
  ├─ Resources/
- │  └─ Design tokens and assets
+ │   └─ Assets + design tokens
  └─ README.md
 
+(Folder names may vary slightly as things evolve, but the roles above are stable.)
 
 ⸻
 
-🧪 Development Notes
-	•	Optimized for modern Swift concurrency with strict actor isolation.
-	•	No external libraries — everything uses Apple frameworks.
-	•	Image pipeline tuned to avoid layout thrash, animation hitches, and excessive memory usage.
+🔍 Design Notes
+	•	Performance first
+	•	Downsampled images and cached decoding
+	•	Minimal overdraw and sensible animation usage
+	•	Debounce user input, do work off the main actor where appropriate
+	•	Deterministic behavior
+	•	Stable sorting with consistent tie-breakers
+	•	Explicit merge rules on import (prefer richer data)
+	•	Safety & privacy
+	•	No third-party SDKs
+	•	TMDB key stays on device (app Settings)
+
+⸻
+
+🗺 Roadmap (short list)
+	•	“Tonight’s Pick” (small ranked spotlight with a pinch of serendipity)
+	•	Smart Lists (New This Week, Critically Acclaimed, Fill Your Gaps)
+	•	Poster prefetch (background warm-up for immediate grids)
+	•	Watch history polish + optional iCloud sync toggle
+	•	Snapshot tests for views and import pipeline
 
 ⸻
 
 🛡 License
 
-This project is licensed under the MIT License.
-Feel free to fork, learn, or contribute.
+MIT — have fun, learn, and build.
 
 ⸻
 
 🙌 Acknowledgements
-	•	Apple for SwiftUI and its modern concurrency model.
-	•	TMDB for Movie details.
+	•	Apple: SwiftUI + modern concurrency
+	•	TMDB: Movie data
 
 ⸻
 
 📬 Contact
 
-Maintained by donnoel & Bella Ai.  For questions or contributions, open an issue or pull request.
+Maintained by donnoel & bella ai.
 
 ⸻
