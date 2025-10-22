@@ -146,6 +146,6 @@ MIT — have fun, learn, and build.
 
 📬 Contact
 
-Maintained by donnoel & bella/ai.
+Maintained by donnoel & bella ai.
 
 ⸻
