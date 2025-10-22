@@ -352,15 +352,8 @@ struct SettingsView: View {
                 NavigationLink {
                     WatchedHistoryView()
                 } label: {
-                    HStack(spacing: 12) {
-                        Label("Watched History", systemImage: "clock.arrow.circlepath")
-                        Spacer()
-                        Text("\(history.watched.count)")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "chevron.right")
-                            .foregroundStyle(.tertiary)
-                    }
+                    Label("Watched History", systemImage: "clock.arrow.circlepath")
+                        .labelStyle(.titleAndIcon)
                 }
                 .accessibilityLabel("Open full watched history")
             }
