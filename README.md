@@ -99,14 +99,14 @@ Feel free to fork, learn, or contribute.
 ⸻
 
 🙌 Acknowledgements
-	•	Apple for SwiftUI and its modern concurrency model
-	•	TMDB for optional image sources (if you choose to enable them)
+	•	Apple for SwiftUI and its modern concurrency model.
+	•	TMDB for Movie details.
 
 ⸻
 
 📬 Contact
 
-Maintained by Don Noel
+Maintained by donnoel & Bella Ai
 For questions or contributions, open an issue or pull request.
 
 ⸻
