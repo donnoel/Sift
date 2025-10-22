@@ -41,7 +41,7 @@ Sift helps you build a personal movie library powered by TMDB. Paste a list of t
 
 	1.	Clone
 
-git clone https://github.com/yourusername/Sift.git
+git clone https://github.com/donnoel/Sift.git
 cd Sift
 
 	2.	Open
