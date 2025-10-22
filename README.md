@@ -82,7 +82,7 @@ The Library grid is stutter-free with cached posters.
 	•	Search
 Start typing—Sift waits a beat (debounce), then filters using locale/diacritic-aware matching.
 	•	Sort
-Use the top-right menu to switch: Title A–Z, Year, Rating (stable and deterministic).
+Use the top-right menu to switch: Title A–Z, Year, Rating.
 
 ⸻
 
