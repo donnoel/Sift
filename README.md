@@ -8,6 +8,7 @@ Sift helps you build a personal movie library powered by TMDB. Paste a list of t
 ⸻
 
 ✨ Highlights
+
 	•	TMDB smart search matching (exact/near-title + year proximity + rating tiebreaker)
 	•	One-shot image configuration caching (stable poster base URL + optimal size)
 	•	Fast library UI: debounced search, locale/diacritic-aware filters, and stable sorting
@@ -18,6 +19,7 @@ Sift helps you build a personal movie library powered by TMDB. Paste a list of t
 ⸻
 
 🧰 Tech Stack
+
 	•	Language: Swift 6.2
 	•	UI: SwiftUI (no external UI libraries)
 	•	Platform: iOS 17+
@@ -27,6 +29,7 @@ Sift helps you build a personal movie library powered by TMDB. Paste a list of t
 ⸻
 
 📦 Requirements
+
 	•	macOS 15.0+
 	•	Xcode 16+
 	•	iOS 17+ simulator or device
@@ -35,6 +38,7 @@ Sift helps you build a personal movie library powered by TMDB. Paste a list of t
 ⸻
 
 🚀 Getting Started
+
 	1.	Clone
 
 git clone https://github.com/yourusername/Sift.git
@@ -61,6 +65,7 @@ No extra dependencies. Hit the ground running. 🏁
 ⸻
 
 🧪 Using Sift (quick tour)
+
 	•	Import
 Open Settings, paste lines like:
 
@@ -102,6 +107,7 @@ Sift/
 ⸻
 
 🔍 Design Notes
+
 	•	Performance first
 	•	Downsampled images and cached decoding
 	•	Minimal overdraw and sensible animation usage
@@ -116,6 +122,7 @@ Sift/
 ⸻
 
 🗺 Roadmap (short list)
+
 	•	“Tonight’s Pick” (small ranked spotlight with a pinch of serendipity)
 	•	Smart Lists (New This Week, Critically Acclaimed, Fill Your Gaps)
 	•	Poster prefetch (background warm-up for immediate grids)
@@ -131,6 +138,7 @@ MIT — have fun, learn, and build.
 ⸻
 
 🙌 Acknowledgements
+
 	•	Apple: SwiftUI + modern concurrency
 	•	TMDB: Movie data
 
