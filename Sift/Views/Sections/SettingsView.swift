@@ -140,9 +140,9 @@ struct SettingsView: View {
                     .monospacedDigit()
             }
 
-            // Row: Watched (in library)
+            // Row: Watched
             HStack {
-                Label("Watched (in Library)", systemImage: "eye.fill")
+                Label("Watched", systemImage: "eye.fill")
                 Spacer()
                 Text("\(watchedInLibrary)")
                     .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
