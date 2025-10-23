@@ -89,20 +89,20 @@ Use the top-right menu to switch: Title A–Z, Year, Rating.
 🏗 Project Structure
 
 Sift/
- ├─ App/
- │   └─ SiftApp.swift (entry) / AppContainer
- ├─ Views/
- │   ├─ Sections/
- │   │   └─ LibraryView.swift (debounced search, stable sort)
- │   └─ Components/ (cards, poster view, etc.)
- ├─ Stores/
- │   └─ LibraryStore.swift (import, progress, de-dupe, persistence)
- ├─ Services/
- │   ├─ TMDBClient.swift (ranked matching, image config cache)
- │   └─ DiskImageCache.swift (on-disk + memory poster caching)
- ├─ Resources/
- │   └─ Assets + design tokens
- └─ README.md
+├─ App/
+│  └─ SiftApp.swift (entry) / AppContainer
+├─ Views/
+│  ├─ Sections/
+│  │  └─ LibraryView.swift (debounced search, stable sort)
+│  └─ Components/ (cards, poster view, etc.)
+├─ Stores/
+│  └─ LibraryStore.swift (import, progress, de-dupe, persistence)
+├─ Services/
+│  ├─ TMDBClient.swift (ranked matching, image config cache)
+│  └─ DiskImageCache.swift (on-disk + memory poster caching)
+├─ Resources/
+│  └─ Assets + design tokens
+└─ README.md
 
 (Folder names may vary slightly as things evolve, but the roles above are stable.)
 
@@ -148,6 +148,6 @@ MIT
 
 📬 Contact
 
-Maintained by donnoel & bella ai.
+Maintained by donnoel.hm & bella.ai.
 
 ⸻
