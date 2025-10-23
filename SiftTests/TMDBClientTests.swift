@@ -1,39 +1,47 @@
+// PATH: SiftTests/TMDBClientTests.swift
 import XCTest
 @testable import Sift
 
 @MainActor
-final class TMDBClientTests: XCTestCase {
+final class TMDBClient_NewTests: XCTestCase {
 
-    // A URLProtocol stub to intercept requests and return canned responses
-    final class StubURLProtocol: URLProtocol {
-        static var responder: ((URLRequest) -> (Int, Data))?
+    func makeClient(key: String = "KEY") -> TMDBClient {
+        let settings = TestAppSettings(key)
+        return TMDBClient(settings: settings, session: .stubbing())
+    }
 
-        override class func canInit(with request: URLRequest) -> Bool { true }
-        override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-        override func startLoading() {
-            guard let responder = Self.responder else { return }
-            let (status, data) = responder(request)
-            let resp = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: [:])!
-            client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
+    func testBestSearchMatch_ranksExactTitleHigher_andPrefersYear() async throws {
+        let client = makeClient()
+
+        // Respond to search
+        StubURLProtocol.responder = { req in
+            if req.url!.path.contains("/search/movie") { return (200, Fixtures.searchInterstellar) }
+            return (200, Data("{"" : ""}".utf8)) // not used
         }
-        override func stopLoading() { }
+
+        let best = try await client.bestSearchMatch(for: "Interstellar", year: 2014)
+        XCTAssertEqual(best?.title, "Interstellar")
+        XCTAssertEqual(best?.id, 157336)
     }
 
-    /// Creates a TMDBClient that uses a stubbed URLSession (no real network).
-    private func makeClient(apiKey: String = "KEY", payload: Data, status: Int = 200) -> TMDBClient {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [StubURLProtocol.self]
-        StubURLProtocol.responder = { _ in (status, payload) }
-        let session = URLSession(configuration: config)
-
-        // This is now legal because the whole class runs on the main actor:
-        let settings = AppSettings()
-        settings.tmdbAPIKey = apiKey
-
-        return TMDBClient(settings: settings, session: session)
+    func testImageURL_usesConfiguration_whenLoaded_elseFallback() async throws {
+        let client = makeClient()
+        // First call returns config then ignores
+        var calls = 0
+        StubURLProtocol.responder = { req in
+            calls += 1
+            if req.url!.path.contains("/configuration") { return (200, Fixtures.imagesConfig) }
+            return (200, Data())
+        }
+        let url = try await client.imageURL(forPosterPath: "/abc.jpg")
+        XCTAssertEqual(url?.absoluteString, "https://image.tmdb.org/t/p/w500/abc.jpg")
+        XCTAssertGreaterThan(calls, 0)
     }
 
-    // … your tests …
+    func testApiKey_nil_returnsNilForSearch() async throws {
+        let settings = TestAppSettings("  ") // empty key
+        let client = TMDBClient(settings: settings, session: .stubbing())
+        let result = try await client.bestSearchMatch(for: "Something")
+        XCTAssertNil(result)
+    }
 }
