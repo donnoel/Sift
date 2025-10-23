@@ -10,13 +10,12 @@ final class InMemoryPersistence: LibraryPersisting {
     func save(movies: [Movie]) async { storage = movies }
 }
 
-// MARK: - TestAppSettings
+// MARK: - Test AppSettings factory
 @MainActor
-final class TestAppSettings: AppSettings {
-    init(_ key: String) {
-        super.init()
-        self.tmdbAPIKey = key
-    }
+func makeTestAppSettings(_ key: String) -> AppSettings {
+    let settings = AppSettings()
+    settings.tmdbAPIKey = key
+    return settings
 }
 
 // MARK: - StubURLProtocol

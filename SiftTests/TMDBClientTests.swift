@@ -6,7 +6,7 @@ import XCTest
 final class TMDBClient_NewTests: XCTestCase {
 
     func makeClient(key: String = "KEY") -> TMDBClient {
-        let settings = TestAppSettings(key)
+        let settings = makeTestAppSettings(key)
         return TMDBClient(settings: settings, session: .stubbing())
     }
 
@@ -16,7 +16,7 @@ final class TMDBClient_NewTests: XCTestCase {
         // Respond to search
         StubURLProtocol.responder = { req in
             if req.url!.path.contains("/search/movie") { return (200, Fixtures.searchInterstellar) }
-            return (200, Data("{"" : ""}".utf8)) // not used
+            return (200, Data("{}".utf8)) // not used
         }
 
         let best = try await client.bestSearchMatch(for: "Interstellar", year: 2014)
@@ -39,7 +39,7 @@ final class TMDBClient_NewTests: XCTestCase {
     }
 
     func testApiKey_nil_returnsNilForSearch() async throws {
-        let settings = TestAppSettings("  ") // empty key
+        let settings = makeTestAppSettings("  ") // empty key
         let client = TMDBClient(settings: settings, session: .stubbing())
         let result = try await client.bestSearchMatch(for: "Something")
         XCTAssertNil(result)
