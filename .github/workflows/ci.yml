@@ -7,6 +7,7 @@ on:
 jobs:
   build-and-test:
     runs-on: macos-15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -16,35 +17,40 @@ jobs:
         with:
           xcode-version: latest
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: List projects/schemes
+      - name: Show environment
         run: |
-          find . -name "*.xcodeproj" -maxdepth 3
-          for proj in $(find . -name "*.xcodeproj" -maxdepth 3); do
-            echo "---- Schemes for $proj ----"
-            xcodebuild -list -project "$proj" || true
-          done
+          xcodebuild -version
+          xcrun simctl list devices
 
-      - name: Build & Test (best-effort autodetect)
+      # 1) Build once for testing (fast, re-used by both destinations)
+      - name: Build for testing
         run: |
           set -euo pipefail
-          proj=$(find . -name "*.xcodeproj" -maxdepth 3 | head -n1)
-          if [ -z "$proj" ]; then
-            echo "No Xcode project found"; exit 1
-          fi
-          # Try to detect a scheme named 'Sift' first, else take the first found scheme
-          scheme=""
-          if xcodebuild -list -project "$proj" | grep -q "^\s*Sift$"; then
-            scheme="Sift"
-          else
-            scheme=$(xcodebuild -list -project "$proj" | awk '/Schemes:/{flag=1;next}/:/ && flag{flag=0}flag' | head -n1 | xargs)
-          fi
-          echo "Using project: $proj"
-          echo "Using scheme: $scheme"
-          xcodebuild test -project "$proj" -scheme "$scheme" -destination 'platform=iOS Simulator,name=iPhone 16' -enableCodeCoverage YES | xcpretty
-        shell: bash
+          xcodebuild build-for-testing \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination 'platform=iOS Simulator,name=iPad (10th generation)' \
+            -enableCodeCoverage YES
+
+      # 2) Run tests on iPad first (uses the build above)
+      - name: Test (iPad first)
+        run: |
+          set -euo pipefail
+          xcodebuild test-without-building \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination 'platform=iOS Simulator,name=iPad (10th generation)' \
+            -enableCodeCoverage YES
+
+      # 3) Run tests on iPhone (second)
+      - name: Test (iPhone second)
+        run: |
+          set -euo pipefail
+          xcodebuild test-without-building \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -enableCodeCoverage YES
 
       - name: Save DerivedData (artifact)
         if: always()
