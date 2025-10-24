@@ -1,7 +1,6 @@
 // PATH: Sift/Services/TMDBClient.swift
 import Foundation
 
-@MainActor
 final class TMDBClient {
     // MARK: - Dependencies
     private weak var settings: AppSettings?
@@ -139,9 +138,11 @@ final class TMDBClient {
     // MARK: - Helpers
 
     private func apiKeyOrNil() async -> String? {
-        guard let s = settings else { return nil }
-        let key = s.tmdbAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? nil : key
+        await MainActor.run { [weak settings] in
+            guard let s = settings else { return nil }
+            let key = s.tmdbAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            return key.isEmpty ? nil : key
+        }
     }
 
     private func decode<T: Decodable>(_ data: Data) throws -> T {
