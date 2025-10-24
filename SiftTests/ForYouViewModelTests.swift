@@ -1,49 +1,36 @@
-// PATH: SiftTests/ForYouViewModelTests.swift
+
 import XCTest
 @testable import Sift
 
 @MainActor
 final class ForYouViewModelTests: XCTestCase {
-
-    func testRefresh_setsMainPick_andRails_fromEngine() async {
-        // Library of distinct genres so we can see rails groupings
-        let lib: [Movie] = [
-            Movie(id: 1, title: "Sci‑Fi One", year: 2014, rating: 8.0, overview: nil, posterPath: nil),
-            Movie(id: 2, title: "Action Two", year: 2016, rating: 7.4, overview: nil, posterPath: nil),
-            Movie(id: 3, title: "Comedy Three", year: 2019, rating: 7.1, overview: nil, posterPath: nil),
+    func testRefreshSetsMainPickAndRails() {
+        let lib = [
+            Movie(id: 1, title: "A", year: 2010, rating: 8.0, overview: nil, posterPath: nil),
+            Movie(id: 2, title: "B", year: 2011, rating: 7.0, overview: nil, posterPath: nil),
+            Movie(id: 3, title: "C", year: 2012, rating: 6.5, overview: nil, posterPath: nil),
         ]
-
         let history = WatchHistoryStore.shared
         history.clearAll()
         let vm = ForYouViewModel(history: history, libraryProvider: { lib })
-
         vm.refresh()
-
-        XCTAssertNotNil(vm.mainPick, "refresh() should choose a main pick")
-        XCTAssertFalse(vm.rails.isEmpty, "refresh() should produce at least one rail from the library")
+        XCTAssertNotNil(vm.mainPick)
+        XCTAssertFalse(vm.rails.isEmpty)
     }
 
-    func testMarkWatched_filtersCoolingDownTitles_onNextRefresh() async {
-        let lib: [Movie] = [
-            Movie(id: 1, title: "Hot Pick", year: 2020, rating: 9.1, overview: nil, posterPath: nil),
-            Movie(id: 2, title: "Other Pick", year: 2021, rating: 7.2, overview: nil, posterPath: nil),
+    func testMarkWatchedFiltersOnNextRefresh() {
+        let lib = [
+            Movie(id: 11, title: "Hot", year: 2020, rating: 9.4, overview: nil, posterPath: nil),
+            Movie(id: 12, title: "Other", year: 2021, rating: 7.1, overview: nil, posterPath: nil),
         ]
-
         let history = WatchHistoryStore.shared
         history.clearAll()
         let vm = ForYouViewModel(history: history, libraryProvider: { lib })
-
         vm.refresh()
-        let firstMain = vm.mainPick
-
-        // Mark the main pick as watched; default cooldown should hide it on the next refresh
-        if let m = firstMain {
-            vm.markWatched(m)
-        }
-
+        let first = vm.mainPick
+        if let m = first { vm.markWatched(m) }
         vm.refresh()
-        let secondMain = vm.mainPick
-
-        XCTAssertNotEqual(firstMain?.id, secondMain?.id, "After marking watched, the main pick should change due to cooldown filtering.")
+        let second = vm.mainPick
+        XCTAssertNotEqual(first?.id, second?.id)
     }
 }

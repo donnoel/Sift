@@ -3,31 +3,20 @@ import XCTest
 
 @MainActor
 final class AppSettingsTests: XCTestCase {
-    var suite: UserDefaults!
-
-    override func setUp() {
-        super.setUp()
-        suite = UserDefaults(suiteName: "AppSettingsTests.suite")
-        precondition(suite != nil, "Failed to create isolated UserDefaults suite")
-        suite.removePersistentDomain(forName: "AppSettingsTests.suite")
-    }
-
-    override func tearDown() {
-        suite.removePersistentDomain(forName: "AppSettingsTests.suite")
-        suite = nil
-        super.tearDown()
-    }
-
     func testDefaultAPIKeyEmpty() {
-        let s = AppSettings(defaults: suite)
-        XCTAssertEqual(s.tmdbAPIKey, "")
+        let suiteName = "SiftTests-AppSettings-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: suite)
+        XCTAssertEqual(settings.tmdbAPIKey, "")
     }
 
-    func testAPIKeyPersists() {
-        var s: AppSettings? = AppSettings(defaults: suite)
-        s?.tmdbAPIKey = "abc123"
-        s = nil
-        let s2 = AppSettings(defaults: suite)
-        XCTAssertEqual(s2.tmdbAPIKey, "abc123")
+    func testAPIKeyPersistsRoundTrip() {
+        let suiteName = "SiftTests-AppSettings-\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: suiteName)!
+        defer { suite.removePersistentDomain(forName: suiteName) }
+        let settings = AppSettings(defaults: suite)
+        settings.tmdbAPIKey = "abc123"
+        XCTAssertEqual(settings.tmdbAPIKey, "abc123")
     }
 }

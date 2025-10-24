@@ -37,13 +37,6 @@
 			);
 			target = 5AB78ACB2EA547100077C408 /* Sift */;
 		};
-		5AD5B83F2EABBDBF00B476A3 /* Exceptions for "SiftTests" folder in "SiftTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				TMDBClientTests.swift,
-			);
-			target = 5AB78ADC2EA547100077C408 /* SiftTests */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -57,9 +50,6 @@
 		};
 		5AB78AE02EA547100077C408 /* SiftTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				5AD5B83F2EABBDBF00B476A3 /* Exceptions for "SiftTests" folder in "SiftTests" target */,
-			);
 			path = SiftTests;
 			sourceTree = "<group>";
 		};
