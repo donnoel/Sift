@@ -1,49 +1,135 @@
-- name: Show environment
-  run: |
-    xcodebuild -version
-    xcrun simctl list devices
-    xcrun simctl list runtimes
+name: CI
 
-- name: Resolve simulator UDIDs (iPad + iPhone)
-  id: sims
-  shell: bash
-  run: |
-    set -euo pipefail
-    # Pick the first available iPad
-    IPAD_UDID="$(xcrun simctl list devices available | awk -F'[()]' '/iPad/{print $2; exit}')"
-    # Pick the first available iPhone
-    IPHONE_UDID="$(xcrun simctl list devices available | awk -F'[()]' '/iPhone/{print $2; exit}')"
+on:
+  push:
+  pull_request:
 
-    if [[ -z "${IPAD_UDID}" || -z "${IPHONE_UDID}" ]]; then
-      echo "No suitable simulators found"; exit 1
-    fi
+jobs:
+  build-and-test:
+    runs-on: macos-15
 
-    echo "ipad_udid=${IPAD_UDID}"   >> "$GITHUB_OUTPUT"
-    echo "iphone_udid=${IPHONE_UDID}" >> "$GITHUB_OUTPUT"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-- name: Build for testing (iPad)
-  run: |
-    set -euo pipefail
-    xcodebuild build-for-testing \
-      -project Sift.xcodeproj \
-      -scheme Sift \
-      -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
-      -enableCodeCoverage YES
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest
 
-- name: Test (iPad)
-  run: |
-    set -euo pipefail
-    xcodebuild test-without-building \
-      -project Sift.xcodeproj \
-      -scheme Sift \
-      -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
-      -enableCodeCoverage YES
+      - name: Show environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          echo "== Runtimes =="
+          xcrun simctl list runtimes
+          echo "== Devices (all) =="
+          xcrun simctl list devices
+          echo "== Devices (available) =="
+          xcrun simctl list devices available
 
-- name: Test (iPhone)
-  run: |
-    set -euo pipefail
-    xcodebuild test-without-building \
-      -project Sift.xcodeproj \
-      -scheme Sift \
-      -destination "id=${{ steps.sims.outputs.iphone_udid }}" \
-      -enableCodeCoverage YES
+      - name: Resolve or create simulators (iPad + iPhone)
+        id: sims
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # 1) Find latest iOS runtime identifier (e.g. com.apple.CoreSimulator.SimRuntime.iOS-18-1)
+          RUNTIME_ID="$(xcrun simctl list runtimes | awk -F '[() ]+' '/iOS/{print $6}' | tail -n1)"
+          if [[ -z "${RUNTIME_ID:-}" ]]; then
+            echo "Could not detect an iOS runtime"; exit 1
+          fi
+          echo "Using runtime: ${RUNTIME_ID}"
+
+          # 2) Try to find an available iPad & iPhone UDID
+          IPAD_UDID="$(xcrun simctl list devices available | awk -F '[()]' '/iPad/{print $2; exit}')"
+          IPHONE_UDID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/{print $2; exit}')"
+
+          # 3) Create missing simulators if needed (device types commonly present on runners)
+          if [[ -z "${IPAD_UDID}" ]]; then
+            # Try 10th-gen iPad device type; fall back to generic "iPad (9th generation)"
+            for TYPE in "com.apple.CoreSimulator.SimDeviceType.iPad-10th-generation" "com.apple.CoreSimulator.SimDeviceType.iPad-9th-generation"; do
+              if xcrun simctl create "CI iPad" "$TYPE" "$RUNTIME_ID" >/dev/null 2>&1; then
+                IPAD_UDID="$(xcrun simctl list devices | awk -F '[()]' '/CI iPad/{print $2; exit}')"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "${IPHONE_UDID}" ]]; then
+            # Try modern iPhone types; fall back to iPhone 14
+            for TYPE in "com.apple.CoreSimulator.SimDeviceType.iPhone-16" "com.apple.CoreSimulator.SimDeviceType.iPhone-15" "com.apple.CoreSimulator.SimDeviceType.iPhone-14"; do
+              if xcrun simctl create "CI iPhone" "$TYPE" "$RUNTIME_ID" >/dev/null 2>&1; then
+                IPHONE_UDID="$(xcrun simctl list devices | awk -F '[()]' '/CI iPhone/{print $2; exit}')"
+                break
+              fi
+            done
+          fi
+
+          if [[ -z "${IPAD_UDID}" || -z "${IPHONE_UDID}" ]]; then
+            echo "Could not resolve or create required simulators."; exit 1
+          fi
+
+          echo "iPad UDID:   ${IPAD_UDID}"
+          echo "iPhone UDID: ${IPHONE_UDID}"
+
+          # Export outputs for later steps
+          echo "ipad_udid=${IPAD_UDID}"   >> "$GITHUB_OUTPUT"
+          echo "iphone_udid=${IPHONE_UDID}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify scheme & project
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "== Project list =="
+          find . -name "*.xcodeproj" -maxdepth 3
+          echo "== Schemes for Sift.xcodeproj =="
+          xcodebuild -list -project Sift.xcodeproj || true
+
+      # Build once for iPad (re-used for both)
+      - name: Build for testing (iPad)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
+            -enableCodeCoverage YES
+
+      - name: Test (iPad first)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild test-without-building \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
+            -enableCodeCoverage YES
+
+      - name: Test (iPhone second)
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild test-without-building \
+            -project Sift.xcodeproj \
+            -scheme Sift \
+            -destination "id=${{ steps.sims.outputs.iphone_udid }}" \
+            -enableCodeCoverage YES
+
+      - name: Save DerivedData (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DerivedData
+          path: ~/Library/Developer/Xcode/DerivedData
+          if-no-files-found: ignore
+
+      - name: Save Test Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-logs
+          path: "*.log"
+          if-no-files-found: ignore
