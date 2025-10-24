@@ -1,6 +1,7 @@
 // PATH: Sift/Stores/LibraryStore.swift
 import SwiftUI
 import Combine
+import Foundation
 
 // MARK: - Testable persistence abstraction
 protocol LibraryPersisting {
@@ -66,7 +67,9 @@ final class LibraryStore: ObservableObject {
 
         for line in lines {
             do {
-                guard let match = try await client.bestSearchMatch(for: line) else {
+                let parsed = Self.parseImportLine(line)
+                let query = parsed.title.isEmpty ? line : parsed.title
+                guard let match = try await client.bestSearchMatch(for: query, year: parsed.year) else {
                     lastErrors.append("No match for: \(line)")
                     continue
                 }
@@ -112,5 +115,39 @@ final class LibraryStore: ObservableObject {
     static func year(from dateStr: String?) -> Int? {
         guard let s = dateStr, s.count >= 4, let y = Int(s.prefix(4)) else { return nil }
         return y
+    }
+
+    /// Parses a pasted line into a cleaned search title and optional release year hint.
+    /// Accepts inputs like "Heat 1995", "The Thing (1982)" or "Arrival [2016]" and
+    /// trims any trailing punctuation after removing the detected year.
+    static func parseImportLine(_ line: String) -> (title: String, year: Int?) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return ("", nil) }
+
+        let pattern = "(?<!\\d)(\\d{4})(?!\\d)[^\\d]*$"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return (trimmed, nil)
+        }
+
+        let nsString = trimmed as NSString
+        let fullRange = NSRange(location: 0, length: nsString.length)
+        guard let match = regex.firstMatch(in: trimmed, options: [], range: fullRange) else {
+            return (trimmed, nil)
+        }
+
+        let yearRange = match.range(at: 1)
+        guard let yearStringRange = Range(yearRange, in: trimmed),
+              let year = Int(trimmed[yearStringRange]),
+              (1888...2100).contains(year) else {
+            return (trimmed, nil)
+        }
+
+        var title = trimmed
+        if let removalRange = Range(match.range, in: trimmed) {
+            title.removeSubrange(removalRange)
+        }
+
+        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndPunctuation)
+        return (title, year)
     }
 }

@@ -14,14 +14,21 @@ final class TMDBClient_NewTests: XCTestCase {
         let client = makeClient()
 
         // Respond to search
+        var capturedQuery: URLComponents?
+
         StubURLProtocol.responder = { req in
-            if req.url!.path.contains("/search/movie") { return (200, Fixtures.searchInterstellar) }
+            if req.url!.path.contains("/search/movie") {
+                capturedQuery = URLComponents(url: req.url!, resolvingAgainstBaseURL: false)
+                return (200, Fixtures.searchInterstellar)
+            }
             return (200, Data("{}".utf8)) // not used
         }
 
         let best = try await client.bestSearchMatch(for: "Interstellar", year: 2014)
         XCTAssertEqual(best?.title, "Interstellar")
         XCTAssertEqual(best?.id, 157336)
+        let queryDict = Dictionary(uniqueKeysWithValues: (capturedQuery?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(queryDict["primary_release_year"], "2014")
     }
 
     func testImageURL_usesConfiguration_whenLoaded_elseFallback() async throws {
