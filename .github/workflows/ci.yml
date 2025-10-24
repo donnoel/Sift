@@ -1,69 +1,49 @@
-name: CI
+- name: Show environment
+  run: |
+    xcodebuild -version
+    xcrun simctl list devices
+    xcrun simctl list runtimes
 
-on:
-  push:
-  pull_request:
+- name: Resolve simulator UDIDs (iPad + iPhone)
+  id: sims
+  shell: bash
+  run: |
+    set -euo pipefail
+    # Pick the first available iPad
+    IPAD_UDID="$(xcrun simctl list devices available | awk -F'[()]' '/iPad/{print $2; exit}')"
+    # Pick the first available iPhone
+    IPHONE_UDID="$(xcrun simctl list devices available | awk -F'[()]' '/iPhone/{print $2; exit}')"
 
-jobs:
-  build-and-test:
-    runs-on: macos-15
+    if [[ -z "${IPAD_UDID}" || -z "${IPHONE_UDID}" ]]; then
+      echo "No suitable simulators found"; exit 1
+    fi
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    echo "ipad_udid=${IPAD_UDID}"   >> "$GITHUB_OUTPUT"
+    echo "iphone_udid=${IPHONE_UDID}" >> "$GITHUB_OUTPUT"
 
-      - name: Select Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest
+- name: Build for testing (iPad)
+  run: |
+    set -euo pipefail
+    xcodebuild build-for-testing \
+      -project Sift.xcodeproj \
+      -scheme Sift \
+      -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
+      -enableCodeCoverage YES
 
-      - name: Show environment
-        run: |
-          xcodebuild -version
-          xcrun simctl list devices
+- name: Test (iPad)
+  run: |
+    set -euo pipefail
+    xcodebuild test-without-building \
+      -project Sift.xcodeproj \
+      -scheme Sift \
+      -destination "id=${{ steps.sims.outputs.ipad_udid }}" \
+      -enableCodeCoverage YES
 
-      # 1) Build once for testing (fast, re-used by both destinations)
-      - name: Build for testing
-        run: |
-          set -euo pipefail
-          xcodebuild build-for-testing \
-            -project Sift.xcodeproj \
-            -scheme Sift \
-            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
-            -enableCodeCoverage YES
-
-      # 2) Run tests on iPad first (uses the build above)
-      - name: Test (iPad first)
-        run: |
-          set -euo pipefail
-          xcodebuild test-without-building \
-            -project Sift.xcodeproj \
-            -scheme Sift \
-            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' \
-            -enableCodeCoverage YES
-
-      # 3) Run tests on iPhone (second)
-      - name: Test (iPhone second)
-        run: |
-          set -euo pipefail
-          xcodebuild test-without-building \
-            -project Sift.xcodeproj \
-            -scheme Sift \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-            -enableCodeCoverage YES
-
-      - name: Save DerivedData (artifact)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: DerivedData
-          path: ~/Library/Developer/Xcode/DerivedData
-          if-no-files-found: ignore
-
-      - name: Save Test Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-logs
-          path: "*.log"
-          if-no-files-found: ignore
+- name: Test (iPhone)
+  run: |
+    set -euo pipefail
+    xcodebuild test-without-building \
+      -project Sift.xcodeproj \
+      -scheme Sift \
+      -destination "id=${{ steps.sims.outputs.iphone_udid }}" \
+      -enableCodeCoverage YES
