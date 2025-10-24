@@ -1,4 +1,3 @@
-// PATH: Sift/Views/Sections/ForYouView.swift
 import SwiftUI
 
 struct ForYouView: View {
@@ -26,7 +25,7 @@ struct ForYouView: View {
                         SectionHeader(genre.rawValue)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                ForEach(movies) { m in
+                                ForEach(tenMovies(for: genre, current: movies)) { m in
                                     MoviePosterCard(movie: m) { vm.markWatched(m) }
                                         .environmentObject(library)
                                 }
@@ -50,6 +49,29 @@ struct ForYouView: View {
             vm.refresh()
             preheatForYouPosters()
         }
+    }
+    // Build exactly 10 real movies for a rail by backfilling from the library,
+    // avoiding duplicates across rails and excluding the hero pick.
+    private func tenMovies(for genre: MovieGenre, current: [Movie]) -> [Movie] {
+        var result = current
+        if result.count >= 10 { return Array(result.prefix(10)) }
+
+        // Track used IDs to avoid duplicates across rows and the hero.
+        var used = Set<Movie.ID>()
+        if let hero = vm.mainPick { used.insert(hero.id) }
+        for (_, ms) in vm.rails {
+            for m in ms { used.insert(m.id) }
+        }
+        for m in result { used.insert(m.id) }
+
+        // Backfill from the entire library (simple priority: library order).
+        // If you want genre-strict backfill, we can refine here to filter by genre classification.
+        for m in library.movies where !used.contains(m.id) {
+            result.append(m)
+            used.insert(m.id)
+            if result.count == 10 { break }
+        }
+        return result
     }
 
     // Preheat poster images for main pick + rails (uses DiskImageCache)
