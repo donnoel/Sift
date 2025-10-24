@@ -31,13 +31,18 @@ final class TMDBClient {
         let q = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return nil }
 
+        var queryItems: [URLQueryItem] = [
+            .init(name: "query", value: q),
+            .init(name: "include_adult", value: "false"),
+            .init(name: "language", value: "en-US")
+        ]
+        if let year {
+            queryItems.append(.init(name: "primary_release_year", value: String(year)))
+        }
+
         let data = try await fetchData(
             path: "/search/movie",
-            query: [
-                .init(name: "query", value: q),
-                .init(name: "include_adult", value: "false"),
-                .init(name: "language", value: "en-US")
-            ],
+            query: queryItems,
             apiKey: key
         )
         let resp: TMDBSearchResponse = try decode(data)

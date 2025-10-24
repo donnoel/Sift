@@ -212,21 +212,8 @@ private struct PosterView: View {
     var body: some View {
         Group {
             if let url {
-                // If you already have a CachedAsyncImage, swap it here:
-                // CachedAsyncImage(url: url) { image in ... }
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ZStack { ProgressView() }
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure:
-                        placeholder
-                    @unknown default:
-                        placeholder
-                    }
+                CachedAsyncImage(url: url, contentMode: .fill) {
+                    placeholder
                 }
             } else {
                 placeholder

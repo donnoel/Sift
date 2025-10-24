@@ -1,6 +1,7 @@
 // PATH: Sift/Stores/LibraryStore.swift
 import SwiftUI
 import Combine
+import Foundation
 
 // MARK: - Testable persistence abstraction
 protocol LibraryPersisting {
@@ -68,7 +69,9 @@ final class LibraryStore: ObservableObject {
             let (searchTitle, yearHint) = Self.extractTitleAndYear(from: line)
             let queryTitle = searchTitle.isEmpty ? line : searchTitle
             do {
-                guard let match = try await client.bestSearchMatch(for: queryTitle, year: yearHint) else {
+                let parsed = Self.parseImportLine(line)
+                let query = parsed.title.isEmpty ? line : parsed.title
+                guard let match = try await client.bestSearchMatch(for: query, year: parsed.year) else {
                     lastErrors.append("No match for: \(line)")
                     continue
                 }
@@ -116,38 +119,37 @@ final class LibraryStore: ObservableObject {
         return y
     }
 
-    private static let trailingYearRegex: NSRegularExpression = {
-        let pattern = "(\\d{4})(?!.*\\d)"
-        return try! NSRegularExpression(pattern: pattern, options: [])
-    }()
-
-    /// Extracts a cleaned title and optional trailing 4-digit year hint from user input.
-    /// Handles formats like "Alien (1979)", "Heat 1995", or "The Matrix - 1999".
-    private static func extractTitleAndYear(from line: String) -> (title: String, year: Int?) {
+    /// Parses a pasted line into a cleaned search title and optional release year hint.
+    /// Accepts inputs like "Heat 1995", "The Thing (1982)" or "Arrival [2016]" and
+    /// trims any trailing punctuation after removing the detected year.
+    static func parseImportLine(_ line: String) -> (title: String, year: Int?) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return ("", nil) }
 
-        let nsString = trimmed as NSString
-        let fullRange = NSRange(location: 0, length: nsString.length)
-
-        if let match = trailingYearRegex.firstMatch(in: trimmed, options: [], range: fullRange),
-           match.numberOfRanges > 1 {
-            let yearRange = match.range(at: 1)
-            if yearRange.location != NSNotFound {
-                let yearString = nsString.substring(with: yearRange)
-                if let year = Int(yearString), (1880...2100).contains(year) {
-                    let prefixRange = NSRange(location: 0, length: yearRange.location)
-                    var rawTitle = nsString.substring(with: prefixRange)
-                    rawTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    rawTitle = rawTitle.trimmingCharacters(in: CharacterSet(charactersIn: "-–—:()[]{}·•,."))
-                    rawTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !rawTitle.isEmpty {
-                        return (rawTitle, year)
-                    }
-                }
-            }
+        let pattern = "(?<!\\d)(\\d{4})(?!\\d)[^\\d]*$"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return (trimmed, nil)
         }
 
-        return (trimmed, nil)
+        let nsString = trimmed as NSString
+        let fullRange = NSRange(location: 0, length: nsString.length)
+        guard let match = regex.firstMatch(in: trimmed, options: [], range: fullRange) else {
+            return (trimmed, nil)
+        }
+
+        let yearRange = match.range(at: 1)
+        guard let yearStringRange = Range(yearRange, in: trimmed),
+              let year = Int(trimmed[yearStringRange]),
+              (1888...2100).contains(year) else {
+            return (trimmed, nil)
+        }
+
+        var title = trimmed
+        if let removalRange = Range(match.range, in: trimmed) {
+            title.removeSubrange(removalRange)
+        }
+
+        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndPunctuation)
+        return (title, year)
     }
 }
