@@ -37,13 +37,6 @@
 			);
 			target = 5AB78ACB2EA547100077C408 /* Sift */;
 		};
-		5AD2DDC12EAAC26E005F5B26 /* Exceptions for "SiftTests" folder in "SiftTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				TMDBClientTests.swift,
-			);
-			target = 5AB78ADC2EA547100077C408 /* SiftTests */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -57,9 +50,6 @@
 		};
 		5AB78AE02EA547100077C408 /* SiftTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				5AD2DDC12EAAC26E005F5B26 /* Exceptions for "SiftTests" folder in "SiftTests" target */,
-			);
 			path = SiftTests;
 			sourceTree = "<group>";
 		};
@@ -153,9 +143,6 @@
 			dependencies = (
 				5AB78ADF2EA547100077C408 /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				5AB78AE02EA547100077C408 /* SiftTests */,
-			);
 			name = SiftTests;
 			packageProductDependencies = (
 			);
@@ -175,9 +162,6 @@
 			);
 			dependencies = (
 				5AB78AE92EA547100077C408 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				5AB78AEA2EA547100077C408 /* SiftUITests */,
 			);
 			name = SiftUITests;
 			packageProductDependencies = (

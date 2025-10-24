@@ -72,8 +72,8 @@ final class LibraryStore_NewTests: XCTestCase {
 
         var capturedSearchURL: URL?
 
-        StubURLProtocol.responder = { req in
-            let path = req.url!.path
+        SiftStubURLProtocol.responder = { req in
+            let path = req.url?.path ?? ""
             if path.contains("/search/movie") {
                 capturedSearchURL = req.url
                 return (200, Fixtures.searchInterstellar)
