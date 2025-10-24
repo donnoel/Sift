@@ -65,8 +65,22 @@ final class TMDBClient {
         return try decode(data)
     }
 
-    /// Builds a full poster URL using the cached TMDB image configuration.
-    /// Falls back to the standard TMDB w500 path if config hasn't loaded yet.
+    // MARK: - Image URLs
+
+    /// Synchronous convenience: builds a poster URL from a TMDB poster path using any cached config.
+    /// If the config isn't cached yet, it falls back to a standard `w500` URL.
+    /// Use this in UI code when you don't want to `await`, and accept the safe fallback.
+    func posterURL(for posterPath: String?) -> URL? {
+        guard let posterPath else { return nil }
+        if let base = imageBaseURL, let size = preferredPosterSize {
+            return URL(string: base + size + posterPath)
+        }
+        // Fallback mirrors previous behavior (and keeps tests stable).
+        return URL(string: "https://image.tmdb.org/t/p/w500" + posterPath)
+    }
+
+    /// Builds a full poster URL, lazily loading the TMDB image configuration if needed.
+    /// If config fetch fails, returns a safe `w500` fallback.
     func imageURL(forPosterPath posterPath: String?) async throws -> URL? {
         guard let posterPath else { return nil }
         if imageBaseURL == nil || preferredPosterSize == nil {
@@ -94,7 +108,7 @@ final class TMDBClient {
         )
         let resp: TMDBImagesConfigResponse = try decode(data)
 
-        // Choose a sensible poster size: prefer w500, else nearest larger than w342, else the largest available.
+        // Choose a sensible poster size: prefer w500, else nearest ≥ w500, else the largest available.
         let sizes = resp.images.poster_sizes
         let chosen: String = {
             if sizes.contains("w500") { return "w500" }
