@@ -48,8 +48,9 @@ final class LibraryStore: ObservableObject {
         await persistence.save(movies: movies)
     }
 
-    // MARK: - Import
+    // MARK: - Import (bounded concurrency)
     /// Parses pasted lines, searches TMDB, fetches details, and appends to library.
+    /// Uses a small concurrency window to keep the UI responsive and imports fast.
     func importFromPaste(_ text: String) async {
         lastErrors.removeAll()
         let lines = text
@@ -65,29 +66,51 @@ final class LibraryStore: ObservableObject {
         let total = Double(lines.count)
         var step = 0.0
 
-        for line in lines {
-            do {
-                let parsed = Self.parseImportLine(line)
-                let query = parsed.title.isEmpty ? line : parsed.title
-                guard let match = try await client.bestSearchMatch(for: query, year: parsed.year) else {
-                    lastErrors.append("No match for: \(line)")
-                    continue
+        let maxConcurrent = 4
+        let client = self.client  // capture for task closures
+
+        await withTaskGroup(of: (Movie?, String?).self) { group in
+            var iterator = lines.makeIterator()
+
+            func enqueueNext() {
+                guard let line = iterator.next() else { return }
+                group.addTask {
+                    do {
+                        let parsed = Self.parseImportLine(line)
+                        let query = parsed.title.isEmpty ? line : parsed.title
+                        guard let match = try await client.bestSearchMatch(for: query, year: parsed.year) else {
+                            return (nil, "No match for: \(line)")
+                        }
+                        let details = try await client.details(for: match.id)
+                        let movie = Movie(
+                            id: details.id,
+                            title: details.title,
+                            year: Self.year(from: details.release_date),
+                            rating: details.vote_average,
+                            overview: details.overview,
+                            posterPath: details.poster_path
+                        )
+                        return (movie, nil)
+                    } catch {
+                        return (nil, "Error \"\(line)\": \(error.localizedDescription)")
+                    }
                 }
-                let details = try await client.details(for: match.id)
-                let movie = Movie(
-                    id: details.id,
-                    title: details.title,
-                    year: Self.year(from: details.release_date),
-                    rating: details.vote_average,
-                    overview: details.overview,
-                    posterPath: details.poster_path
-                )
-                imported.append(movie)
-            } catch {
-                lastErrors.append("Error \"\(line)\": \(error.localizedDescription)")
             }
-            step += 1
-            progress = min(1.0, step / total)
+
+            // Prime the group
+            for _ in 0..<min(maxConcurrent, lines.count) {
+                enqueueNext()
+            }
+
+            // Drain results and keep the pipeline full
+            while let result = await group.next() {
+                let (movie, err) = result
+                if let m = movie { imported.append(m) }
+                if let e = err { lastErrors.append(e) }
+                step += 1
+                progress = min(1.0, step / total)
+                enqueueNext()
+            }
         }
 
         // Merge: avoid duplicates by id (prefer new details)
@@ -112,7 +135,7 @@ final class LibraryStore: ObservableObject {
     // MARK: - Utilities
 
     // Internal so tests can call it directly.
-    static func year(from dateStr: String?) -> Int? {
+    nonisolated static func year(from dateStr: String?) -> Int? {
         guard let s = dateStr, s.count >= 4, let y = Int(s.prefix(4)) else { return nil }
         return y
     }
@@ -120,7 +143,7 @@ final class LibraryStore: ObservableObject {
     /// Parses a pasted line into a cleaned search title and optional release year hint.
     /// Accepts inputs like "Heat 1995", "The Thing (1982)" or "Arrival [2016]" and
     /// trims any trailing punctuation after removing the detected year.
-    static func parseImportLine(_ line: String) -> (title: String, year: Int?) {
+    nonisolated static func parseImportLine(_ line: String) -> (title: String, year: Int?) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return ("", nil) }
 
