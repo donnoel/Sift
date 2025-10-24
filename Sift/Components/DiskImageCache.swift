@@ -128,11 +128,17 @@ actor DiskImageCache {
     private func download(_ url: URL) async -> Data? {
         var req = URLRequest(url: url)
         req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.setValue("image/*", forHTTPHeaderField: "Accept")
         do {
             let (data, resp) = try await URLSession.shared.data(for: req)
             guard let http = resp as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode),
                   !data.isEmpty else { return nil }
+            // Extra safety: only cache when the server declares an image content type (when present).
+            if let ctype = http.value(forHTTPHeaderField: "Content-Type"),
+               !ctype.lowercased().hasPrefix("image/") {
+                return nil
+            }
             return data
         } catch {
             return nil
