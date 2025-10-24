@@ -46,4 +46,34 @@ final class LibraryStore_NewTests: XCTestCase {
         XCTAssertNil(LibraryStore.year(from: nil))
         XCTAssertNil(LibraryStore.year(from: "x"))
     }
+
+    func testImportFromPaste_usesTrailingYearHintForBetterMatching() async throws {
+        let settings = makeTestAppSettings("ALIENKEY")
+        let session = URLSession.stubbing()
+        let client = TMDBClient(settings: settings, session: session)
+        let mem = InMemoryPersistence()
+        let store = LibraryStore(settings: settings, client: client, persistence: mem, loadOnInit: false)
+
+        var capturedQueries: [String] = []
+
+        StubURLProtocol.responder = { req in
+            let path = req.url!.path
+            if path.contains("/search/movie") {
+                if let comps = URLComponents(url: req.url!, resolvingAgainstBaseURL: false) {
+                    let query = comps.queryItems?.first(where: { $0.name == "query" })?.value ?? ""
+                    capturedQueries.append(query)
+                }
+                return (200, Fixtures.searchAlienVariants)
+            }
+            if path.contains("/movie/1") {
+                return (200, Fixtures.detailsAlien1979)
+            }
+            return (404, Data())
+        }
+
+        await store.importFromPaste("Alien (1979)")
+
+        XCTAssertEqual(capturedQueries, ["Alien"])
+        XCTAssertEqual(store.movies.first?.id, 1)
+    }
 }
