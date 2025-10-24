@@ -6,15 +6,18 @@ actor LibraryPersistence {
         return dir.appendingPathComponent("library.json")
     }
 
-    func load() -> [Movie]? {
+    func load() async -> [Movie]? {
         guard let data = try? Data(contentsOf: url) else { return [] }
         return try? JSONDecoder().decode([Movie].self, from: data)
     }
 
-    func save(movies: [Movie]) {
+    func save(movies: [Movie]) async {
         do {
             let data = try JSONEncoder().encode(movies)
             try data.write(to: url, options: .atomic)
-        } catch { }
+        } catch {
+            // Consider logging the error
+        }
     }
 }
+    
