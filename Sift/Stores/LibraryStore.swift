@@ -66,8 +66,6 @@ final class LibraryStore: ObservableObject {
         var step = 0.0
 
         for line in lines {
-            let (searchTitle, yearHint) = Self.extractTitleAndYear(from: line)
-            let queryTitle = searchTitle.isEmpty ? line : searchTitle
             do {
                 let parsed = Self.parseImportLine(line)
                 let query = parsed.title.isEmpty ? line : parsed.title
@@ -149,7 +147,7 @@ final class LibraryStore: ObservableObject {
             title.removeSubrange(removalRange)
         }
 
-        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndPunctuation)
+        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
         return (title, year)
     }
 }
