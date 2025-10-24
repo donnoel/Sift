@@ -16,8 +16,8 @@ struct SiftApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environmentObject(container).environmentObject(container.settings)
-                .environmentObject(container.library)
+              .environmentObject(container.settings)
+              .environmentObject(container.library)
         }
     }
 }
