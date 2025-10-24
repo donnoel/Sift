@@ -143,6 +143,9 @@
 			dependencies = (
 				5AB78ADF2EA547100077C408 /* PBXTargetDependency */,
 			);
+			fileSystemSynchronizedGroups = (
+				5AB78AE02EA547100077C408 /* SiftTests */,
+			);
 			name = SiftTests;
 			packageProductDependencies = (
 			);
@@ -162,6 +165,9 @@
 			);
 			dependencies = (
 				5AB78AE92EA547100077C408 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				5AB78AEA2EA547100077C408 /* SiftUITests */,
 			);
 			name = SiftUITests;
 			packageProductDependencies = (
