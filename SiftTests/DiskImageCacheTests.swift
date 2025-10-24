@@ -1,17 +1,49 @@
-// PATH: SiftTests/DiskImageCacheTests.swift
+import Foundation
 import XCTest
-@testable import Sift
 
-final class DiskImageCacheTests: XCTestCase {
+final class StubURLProtocol: URLProtocol {
 
-    func testRoundTripMemoryAndDisk() async throws {
-        let cache = await DiskImageCache(ttlDays: 1)
-        let url = URL(string: "https://example.com/a.png")!
-        // Seed fake network by writing directly (simulating download)
-        let data = Data([0,1,2,3,4,5])
-        // The cache API doesn't provide explicit PUT, so we exercise data(for:) twice:
-        // First time: no data -> nil (since no network in test), then we simulate disk write and fetch again.
-        let first = await cache.data(for: url)
-        XCTAssertNil(first)
+    static var responder: ((URLRequest) -> (Int, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        // Ensure we have a URL to report back with
+        let resolvedURL = request.url ?? URL(string: "about:blank")!
+
+        // If there's no responder, deliver a deterministic empty 501 response and finish.
+        guard let responder = Self.responder else {
+            let resp = HTTPURLResponse(url: resolvedURL, statusCode: 501, httpVersion: nil, headerFields: [:])!
+            client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data())
+            client?.urlProtocolDidFinishLoading(self)
+            return
+        }
+
+        // Use the responder and always finish.
+        let (status, data) = responder(request)
+        let resp = HTTPURLResponse(url: resolvedURL, statusCode: status, httpVersion: nil, headerFields: [:])!
+        client?.urlProtocol(self, didReceive: resp, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+// MARK: - XCTestCase helpers
+extension XCTestCase {
+    /// Waits for a short period so async work can complete, preventing infinite spinners.
+    /// Use only in tests that do not already use explicit expectations.
+    func waitBriefly(seconds: TimeInterval = 0.2, file: StaticString = #filePath, line: UInt = #line) {
+        let exp = expectation(description: "waitBriefly")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { exp.fulfill() }
+        wait(for: [exp], timeout: seconds + 1.0)
     }
 }

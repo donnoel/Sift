@@ -1,19 +1,24 @@
-// PATH: Sift/Services/AppSettings.swift
+// AppSettings.swift
 import Foundation
 import Combine
 
-/// Global app configuration and user-editable settings.
-/// Keeps the TMDB API key that `TMDBClient` reads from the main actor and persists it.
 @MainActor
 final class AppSettings: ObservableObject {
-    
-    @Published var tmdbAPIKey: String {
-        didSet { UserDefaults.standard.set(self.tmdbAPIKey, forKey: Self.key) }
+    let objectWillChange = ObservableObjectPublisher()
+    private let defaults: UserDefaults
+    private let apiKeyKey = "tmdb_api_key"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
     }
 
-    private static let key = "tmdb_api_key"
-
-    init() {
-        self.tmdbAPIKey = UserDefaults.standard.string(forKey: Self.key) ?? ""
+    var tmdbAPIKey: String {
+        get { defaults.string(forKey: apiKeyKey) ?? "" }
+        set {
+            if newValue != tmdbAPIKey {
+                objectWillChange.send()
+                defaults.set(newValue, forKey: apiKeyKey)
+            }
+        }
     }
 }

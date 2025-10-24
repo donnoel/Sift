@@ -66,6 +66,8 @@ final class LibraryStore: ObservableObject {
         var step = 0.0
 
         for line in lines {
+            let (searchTitle, yearHint) = Self.extractTitleAndYear(from: line)
+            let queryTitle = searchTitle.isEmpty ? line : searchTitle
             do {
                 let parsed = Self.parseImportLine(line)
                 let query = parsed.title.isEmpty ? line : parsed.title
