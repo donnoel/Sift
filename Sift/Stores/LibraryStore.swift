@@ -48,6 +48,12 @@ final class LibraryStore: ObservableObject {
         await persistence.save(movies: movies)
     }
 
+    // MARK: - Image URLs
+    /// Build a poster URL using the TMDB config cached in TMDBClient (falls back to w500).
+    func posterURL(for posterPath: String?) -> URL? {
+        client.posterURL(for: posterPath)
+    }
+
     // MARK: - Import (bounded concurrency)
     /// Parses pasted lines, searches TMDB, fetches details, and appends to library.
     /// Uses a small concurrency window to keep the UI responsive and imports fast.

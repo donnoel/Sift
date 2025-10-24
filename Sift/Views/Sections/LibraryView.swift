@@ -70,6 +70,7 @@ struct LibraryView: View {
                 ], spacing: 12) {
                     ForEach(filteredAndSortedMovies) { movie in
                         MovieCard(movie: movie)
+                            .environmentObject(library)
                     }
                 }
                 .padding()
@@ -164,10 +165,11 @@ struct LibraryView: View {
 
 private struct MovieCard: View {
     let movie: Movie
+    @EnvironmentObject private var library: LibraryStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PosterView(url: movie.posterURL)
+            PosterView(url: library.posterURL(for: movie.posterPath))
                 .frame(height: 180)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay {

@@ -5,13 +5,14 @@ struct MovieDetailView: View {
     let movie: Movie
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @EnvironmentObject private var library: LibraryStore
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     // Poster
-                    CachedAsyncImage(url: movie.posterURL, contentMode: .fill) {
+                    CachedAsyncImage(url: library.posterURL(for: movie.posterPath), contentMode: .fill) {
                         ZStack {
                             Rectangle().fill(Color(.tertiarySystemFill))
                             Image(systemName: "photo")
@@ -36,9 +37,9 @@ struct MovieDetailView: View {
                         HStack(spacing: 12) {
                             if let year = movie.year {
                                 HStack(spacing: 6) {
-    Image(systemName: "calendar")
-    Text(verbatim: String(year))
-}
+                                    Image(systemName: "calendar")
+                                    Text(verbatim: String(year))
+                                }
                             }
                             if let rating = movie.rating {
                                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
