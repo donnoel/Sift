@@ -65,8 +65,10 @@ final class LibraryStore: ObservableObject {
         var step = 0.0
 
         for line in lines {
+            let (searchTitle, yearHint) = Self.extractTitleAndYear(from: line)
+            let queryTitle = searchTitle.isEmpty ? line : searchTitle
             do {
-                guard let match = try await client.bestSearchMatch(for: line) else {
+                guard let match = try await client.bestSearchMatch(for: queryTitle, year: yearHint) else {
                     lastErrors.append("No match for: \(line)")
                     continue
                 }
@@ -112,5 +114,40 @@ final class LibraryStore: ObservableObject {
     static func year(from dateStr: String?) -> Int? {
         guard let s = dateStr, s.count >= 4, let y = Int(s.prefix(4)) else { return nil }
         return y
+    }
+
+    private static let trailingYearRegex: NSRegularExpression = {
+        let pattern = "(\\d{4})(?!.*\\d)"
+        return try! NSRegularExpression(pattern: pattern, options: [])
+    }()
+
+    /// Extracts a cleaned title and optional trailing 4-digit year hint from user input.
+    /// Handles formats like "Alien (1979)", "Heat 1995", or "The Matrix - 1999".
+    private static func extractTitleAndYear(from line: String) -> (title: String, year: Int?) {
+        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return ("", nil) }
+
+        let nsString = trimmed as NSString
+        let fullRange = NSRange(location: 0, length: nsString.length)
+
+        if let match = trailingYearRegex.firstMatch(in: trimmed, options: [], range: fullRange),
+           match.numberOfRanges > 1 {
+            let yearRange = match.range(at: 1)
+            if yearRange.location != NSNotFound {
+                let yearString = nsString.substring(with: yearRange)
+                if let year = Int(yearString), (1880...2100).contains(year) {
+                    let prefixRange = NSRange(location: 0, length: yearRange.location)
+                    var rawTitle = nsString.substring(with: prefixRange)
+                    rawTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    rawTitle = rawTitle.trimmingCharacters(in: CharacterSet(charactersIn: "-–—:()[]{}·•,."))
+                    rawTitle = rawTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !rawTitle.isEmpty {
+                        return (rawTitle, year)
+                    }
+                }
+            }
+        }
+
+        return (trimmed, nil)
     }
 }

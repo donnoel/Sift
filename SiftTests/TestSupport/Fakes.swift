@@ -77,4 +77,23 @@ enum Fixtures {
       }
     }
     """)
+
+    static let searchAlienVariants = data("""
+    { "results": [
+        { "id": 1, "title": "Alien", "release_date": "1979-05-25", "poster_path": "/poster1.jpg", "overview": "Classic sci-fi horror.", "vote_average": 8.4 },
+        { "id": 2, "title": "Alien", "release_date": "2014-01-01", "poster_path": "/poster2.jpg", "overview": "A modern reboot.", "vote_average": 9.0 }
+    ]}
+    """)
+
+    static let detailsAlien1979 = data("""
+    {
+      "id": 1,
+      "title": "Alien",
+      "release_date": "1979-05-25",
+      "poster_path": "/poster1.jpg",
+      "overview": "The crew of the Nostromo encounters a deadly alien lifeform.",
+      "vote_average": 8.4,
+      "genres": [{"name":"Science Fiction"}]
+    }
+    """)
 }
