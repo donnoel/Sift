@@ -1,3 +1,4 @@
+// PATH: Sift/Views/Sections/ForYouView.swift
 import SwiftUI
 
 struct ForYouView: View {
@@ -18,6 +19,7 @@ struct ForYouView: View {
                     if let m = vm.mainPick {
                         SectionHeader("Tonight’s Pick")
                         MovieHeroCard(movie: m, onWatched: { vm.markWatched(m) })
+                            .environmentObject(library)
                     }
 
                     ForEach(vm.rails, id: \.genre) { genre, movies in
@@ -26,6 +28,7 @@ struct ForYouView: View {
                             HStack(spacing: 12) {
                                 ForEach(movies) { m in
                                     MoviePosterCard(movie: m) { vm.markWatched(m) }
+                                        .environmentObject(library)
                                 }
                             }
                             .padding(.horizontal, 4)
@@ -35,9 +38,35 @@ struct ForYouView: View {
             }
             .padding(20)
         }
-        .refreshable { vm.refresh() }
-        .onAppear { vm.refresh() }
-        .onChange(of: library.movies) { _, _ in vm.refresh() }
+        .refreshable {
+            vm.refresh()
+            preheatForYouPosters() // warm posters after refresh
+        }
+        .onAppear {
+            vm.refresh()
+            preheatForYouPosters()
+        }
+        .onChange(of: library.movies) { _, _ in
+            vm.refresh()
+            preheatForYouPosters()
+        }
+    }
+
+    // Preheat poster images for main pick + rails (uses DiskImageCache)
+    private func preheatForYouPosters() {
+        var urls: [URL] = []
+        if let m = vm.mainPick, let u = library.posterURL(for: m.posterPath) {
+            urls.append(u)
+        }
+        for (_, movies) in vm.rails {
+            for m in movies {
+                if let u = library.posterURL(for: m.posterPath) {
+                    urls.append(u)
+                }
+            }
+        }
+        guard !urls.isEmpty else { return }
+        Task { await DiskImageCache.shared.preheat(urls) }
     }
 }
 
@@ -58,6 +87,7 @@ private struct MovieHeroCard: View {
     let movie: Movie
     var onWatched: () -> Void
 
+    @EnvironmentObject private var library: LibraryStore
     @Environment(\.horizontalSizeClass) private var hSize
     private var isCompactPhone: Bool { hSize == .compact }
 
@@ -100,15 +130,31 @@ private struct MoviePosterCard: View {
     let movie: Movie
     var onWatched: () -> Void
 
+    @EnvironmentObject private var library: LibraryStore
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             PosterImage(path: movie.posterPath)
                 .frame(width: 140, height: 210)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
+                .contextMenu {
+                    Button {
+                        onWatched()
+                    } label: {
+                        Label("Mark Watched", systemImage: "checkmark.circle.fill")
+                    }
+                    Button {
+                        UIPasteboard.general.string = movie.title
+                    } label: {
+                        Label("Copy Title", systemImage: "doc.on.doc")
+                    }
+                }
+
             Text(movie.title)
                 .font(.subheadline)
                 .lineLimit(1)
                 .truncationMode(.tail)
+
             Button {
                 onWatched()
             } label: {
@@ -124,10 +170,17 @@ private struct MoviePosterCard: View {
 
 private struct PosterImage: View {
     let path: String?
+    @EnvironmentObject private var library: LibraryStore
+
     var body: some View {
-        if let url = posterURL(from: path) {
-            // Uses your CachedAsyncImage; it shows a placeholder internally.
-            CachedAsyncImage(url: url, contentMode: .fill)
+        if let url = library.posterURL(for: path) {
+            // Uses your CachedAsyncImage with a simple placeholder
+            CachedAsyncImage(url: url, contentMode: .fill) {
+                ZStack {
+                    Rectangle().fill(Color.secondary.opacity(0.15))
+                    Image(systemName: "film").imageScale(.large).opacity(0.5)
+                }
+            }
         } else {
             ZStack {
                 Rectangle().fill(Color.secondary.opacity(0.15))
@@ -135,18 +188,6 @@ private struct PosterImage: View {
             }
         }
     }
-}
-
-// Absolute URLs only; if you store TMDB relative paths, we’ll wire the base later.
-fileprivate func posterURL(from path: String?) -> URL? {
-    guard let p = path, !p.isEmpty else { return nil }
-    if p.hasPrefix("http://") || p.hasPrefix("https://") {
-        return URL(string: p)
-    }
-    // Compose a TMDB image URL when given a relative path like "/abc.jpg"
-    let base = "https://image.tmdb.org/t/p/w500"
-    let full = p.hasPrefix("/") ? base + p : base + "/" + p
-    return URL(string: full)
 }
 
 private struct EmptyForYouState: View {
