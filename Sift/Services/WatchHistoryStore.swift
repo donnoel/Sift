@@ -1,3 +1,4 @@
+// PATH: Sift/Services/WatchHistoryStore.swift
 import Foundation
 import Combine
 
@@ -14,84 +15,84 @@ final class WatchHistoryStore: ObservableObject {
     /// movieID : lastSeen
     @Published private(set) var watched: [MovieID: Date] = [:]
 
-    /// Whether iCloud KVS sync is enabled (persisted in UserDefaults; default true).
+    // User-facing iCloud toggle
     @Published var cloudSyncEnabled: Bool = true
 
-    // Storage keys
-    private let localKey = "watch_history_store_v1"
-    private let cloudKey = "watch_history_store_v1"
-    private let syncEnabledKey = "watch_history_icloud_sync_enabled"
-
-    /// Single iCloud KVS store instance
+    // MARK: - Keys & Stores
+    private let localKey = "watch_history_local_v1"
+    private let cloudKey = "watch_history_cloud_v1"
+    private let syncEnabledKey = "watch_history_cloud_enabled"
     private let store = NSUbiquitousKeyValueStore.default
 
-    private var ubiqObserver: NSObjectProtocol?
+    private var observers: [NSObjectProtocol] = []
 
-    private init() {
-        // Load local first so UI is snappy
-        if let local = Self.decodeLocal(UserDefaults.standard.data(forKey: localKey)) {
-            watched = local
-        }
-
-        // Load sync toggle; default to true if unset
-        if UserDefaults.standard.object(forKey: syncEnabledKey) == nil {
-            UserDefaults.standard.set(true, forKey: syncEnabledKey)
-        }
+    // MARK: - Init
+    init() {
         cloudSyncEnabled = UserDefaults.standard.bool(forKey: syncEnabledKey)
 
-        // Pull from iCloud (if enabled) and merge
+        // Load local
+        if let data = UserDefaults.standard.data(forKey: localKey),
+           let dict = Self.decodeLocal(data) {
+            watched = dict
+        }
+
+        // Merge from cloud on launch if enabled
         if cloudSyncEnabled {
-            store.synchronize() // ask iCloud for latest immediately
-            if let cloudData = store.data(forKey: cloudKey),
-               let cloud = Self.decodeLocal(cloudData) {
-                mergeInCloud(cloud)
+            if let data = store.data(forKey: cloudKey),
+               let cloud = Self.decodeLocal(data) {
+                merge(cloud: cloud)
             }
         }
 
-        // Listen for remote changes and merge (only when enabled)
-        ubiqObserver = NotificationCenter.default.addObserver(
-            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: store,
-            queue: .main
-        ) { [weak self] note in
-            guard let self else { return }
-            guard self.cloudSyncEnabled else { return }
-            if let changedKeys = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
-               changedKeys.contains(self.cloudKey),
-               let data = self.store.data(forKey: self.cloudKey),
-               let incoming = Self.decodeLocal(data) {
-                self.mergeInCloud(incoming)
+        // Listen to iCloud KVS changes
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: store,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self = self, self.cloudSyncEnabled else { return }
+                if let data = self.store.data(forKey: self.cloudKey),
+                   let inbound = Self.decodeLocal(data) {
+                    self.merge(cloud: inbound)
+                }
             }
-        }
+        )
     }
 
     deinit {
-        if let o = ubiqObserver {
-            NotificationCenter.default.removeObserver(o)
-        }
+        for o in observers { NotificationCenter.default.removeObserver(o) }
+        observers.removeAll()
     }
 
     // MARK: - Public API
 
-    func markWatched(_ id: MovieID, on date: Date = .now) {
+    func markWatched(_ id: MovieID, at date: Date = .now) {
         watched[id] = date
         persistAll()
+        if cloudSyncEnabled { pushToCloud() }
     }
 
     func unwatch(_ id: MovieID) {
         watched.removeValue(forKey: id)
         persistAll()
+        if cloudSyncEnabled { pushToCloud() }
     }
 
-    func clearAll() {
-        watched.removeAll()
-        persistAll()
-    }
-
-    /// Example convenience you already had — unchanged behavior.
-    func isCoolingDown(_ id: MovieID, cooldownDays: Int = 365) -> Bool {
+    /// Default cooldown reduced to 120 days so libraries don’t feel “empty” for a year.
+    func isCoolingDown(_ id: MovieID, cooldownDays: Int = 120) -> Bool {
         guard let d = watched[id] else { return false }
         return Date().timeIntervalSince(d) < TimeInterval(cooldownDays) * 24 * 60 * 60
+    }
+
+    func syncNow() {
+        guard cloudSyncEnabled else { return }
+        pushToCloud()
+        store.synchronize()
+        if let data = store.data(forKey: cloudKey),
+           let inbound = Self.decodeLocal(data) {
+            merge(cloud: inbound)
+        }
     }
 
     /// Toggle iCloud sync at runtime. When enabling, push local → iCloud and then pull/merge once.
@@ -109,93 +110,67 @@ final class WatchHistoryStore: ObservableObject {
 
             // Pull and merge to converge across devices
             if let data = store.data(forKey: cloudKey),
-               let incoming = Self.decodeLocal(data) {
-                mergeInCloud(incoming)
+               let inbound = Self.decodeLocal(data) {
+                merge(cloud: inbound)
             }
-        }
-        // If disabled: no-op; we’ll stop writing to iCloud and ignore incoming changes
-    }
-
-    /// Manually trigger a one-shot sync/merge from iCloud (no-op if disabled).
-    func syncNow() {
-        guard cloudSyncEnabled else { return }
-        store.synchronize()
-        if let data = store.data(forKey: cloudKey),
-           let incoming = Self.decodeLocal(data) {
-            mergeInCloud(incoming)
+        } else {
+            // When disabling, do nothing destructive; user can re-enable later.
         }
     }
 
-    // MARK: - Persistence & Merge
+    // MARK: - Persistence
 
-    /// Persist to local and (if enabled) iCloud; then push a sync.
     private func persistAll() {
-        // Local
         if let data = Self.encodeLocal(watched) {
             UserDefaults.standard.set(data, forKey: localKey)
         }
+    }
 
-        // iCloud KVS (if enabled)
+    private func pushToCloud() {
         guard cloudSyncEnabled else { return }
         if let data = Self.encodeLocal(watched) {
             store.set(data, forKey: cloudKey)
         }
-        store.synchronize()
     }
 
-    /// Merge incoming cloud dictionary into memory, preferring the *latest* date per movieID.
-    private func mergeInCloud(_ incoming: [MovieID: Date]) {
-        var changed = false
+    private func merge(cloud: [MovieID: Date]) {
         var merged = watched
-
-        for (id, date) in incoming {
-            if let existing = merged[id] {
-                if date > existing {
-                    merged[id] = date
-                    changed = true
-                }
+        for (k, v) in cloud {
+            if let cur = merged[k] {
+                merged[k] = max(cur, v) // keep latest
             } else {
-                merged[id] = date
-                changed = true
+                merged[k] = v
             }
         }
-
-        // Optional: cloud-authoritative deletions (off by default).
-        // if incoming.count < merged.count {
-        //     for key in merged.keys where incoming[key] == nil {
-        //         merged.removeValue(forKey: key)
-        //         changed = true
-        //     }
-        // }
-
-        if changed {
-            watched = merged
-            // Write merged state back to local and (if enabled) iCloud
-            persistAll()
-        }
+        watched = merged
+        persistAll()
     }
 
-    // MARK: - Encoding helpers
+    // MARK: - Coding helpers
 
-    /// Encode as Data for both UserDefaults and KVS. We store as `[String: Double]` (epoch seconds) for robustness.
     private static func encodeLocal(_ dict: [MovieID: Date]) -> Data? {
-        let wire: [String: Double] = dict.reduce(into: [:]) { acc, pair in
-            acc[String(pair.key)] = pair.value.timeIntervalSince1970
+        do {
+            let payload = dict.mapValues { $0.timeIntervalSince1970 }
+            return try JSONSerialization.data(withJSONObject: payload, options: [])
+        } catch {
+            return nil
         }
-        return try? JSONSerialization.data(withJSONObject: wire, options: [])
     }
 
-    /// Decode from Data produced by `encodeLocal`.
-    private static func decodeLocal(_ data: Data?) -> [MovieID: Date]? {
-        guard let data else { return nil }
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Double] else { return nil }
-        var out: [MovieID: Date] = [:]
-        out.reserveCapacity(obj.count)
-        for (k, ts) in obj {
-            if let id = Int(k) {
-                out[id] = Date(timeIntervalSince1970: ts)
+    private static func decodeLocal(_ data: Data) -> [MovieID: Date]? {
+        do {
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Double] else {
+                return nil
             }
+            var out: [MovieID: Date] = [:]
+            for (k, ts) in obj {
+                if let id = Int(k) {
+                    out[id] = Date(timeIntervalSince1970: ts)
+                }
+            }
+            return out
+        } catch {
+            return nil
         }
-        return out
     }
 }

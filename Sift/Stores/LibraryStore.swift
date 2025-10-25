@@ -68,12 +68,11 @@ final class LibraryStore: ObservableObject {
         isImporting = true
         progress = 0
 
-        var imported: [Movie] = []
+        // Concurrency window
+        let maxInFlight = 6
         let total = Double(lines.count)
         var step = 0.0
-
-        let maxConcurrent = 4
-        let client = self.client  // capture for task closures
+        var imported: [Movie] = []
 
         await withTaskGroup(of: (Movie?, String?).self) { group in
             var iterator = lines.makeIterator()
@@ -84,29 +83,33 @@ final class LibraryStore: ObservableObject {
                     do {
                         let parsed = Self.parseImportLine(line)
                         let query = parsed.title.isEmpty ? line : parsed.title
-                        guard let match = try await client.bestSearchMatch(for: query, year: parsed.year) else {
+
+                        guard let match = try await self.client.bestSearchMatch(for: query, year: parsed.year) else {
                             return (nil, "No match for: \(line)")
                         }
-                        let details = try await client.details(for: match.id)
+                        let details = try await self.client.details(for: match.id)
+
+                        // Persist TMDB genres so the engine can use them authoritatively.
                         let movie = Movie(
                             id: details.id,
                             title: details.title,
                             year: Self.year(from: details.release_date),
                             rating: details.vote_average,
                             overview: details.overview,
-                            posterPath: details.poster_path
+                            posterPath: details.poster_path,
+                            tmdbGenres: details.genres?.map { $0.name }
                         )
                         return (movie, nil)
+                    } catch let e as URLError {
+                        return (nil, "Network error for: \(line) (\(e.code.rawValue))")
                     } catch {
-                        return (nil, "Error \"\(line)\": \(error.localizedDescription)")
+                        return (nil, "Error for: \(line) (\(error.localizedDescription))")
                     }
                 }
             }
 
-            // Prime the group
-            for _ in 0..<min(maxConcurrent, lines.count) {
-                enqueueNext()
-            }
+            // Fill the pipeline
+            for _ in 0..<maxInFlight { enqueueNext() }
 
             // Drain results and keep the pipeline full
             while let result = await group.next() {
@@ -120,9 +123,12 @@ final class LibraryStore: ObservableObject {
         }
 
         // Merge: avoid duplicates by id (prefer new details)
-        var byID: [Int: Movie] = movies.reduce(into: [:]) { $0[$1.id] = $1 }
+        var byID: [Int: Movie] = [:]
+        for m in movies { byID[m.id] = m }
         for m in imported { byID[m.id] = m }
-        movies = Array(byID.values).sorted { ($0.title, $0.year ?? 0) < ($1.title, $1.year ?? 0) }
+        movies = Array(byID.values).sorted {
+            ($0.title, $0.year ?? 0, $0.id) < ($1.title, $1.year ?? 0, $1.id)
+        }
 
         await saveToDisk()
         isImporting = false
@@ -140,43 +146,32 @@ final class LibraryStore: ObservableObject {
 
     // MARK: - Utilities
 
-    // Internal so tests can call it directly.
+    /// Extract a 4-digit year from the start of a date string like "2014-11-07".
     nonisolated static func year(from dateStr: String?) -> Int? {
         guard let s = dateStr, s.count >= 4, let y = Int(s.prefix(4)) else { return nil }
         return y
     }
 
     /// Parses a pasted line into a cleaned search title and optional release year hint.
-    /// Accepts inputs like "Heat 1995", "The Thing (1982)" or "Arrival [2016]" and
-    /// trims any trailing punctuation after removing the detected year.
-    nonisolated static func parseImportLine(_ line: String) -> (title: String, year: Int?) {
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return ("", nil) }
+    /// Accepts inputs like:
+    ///   "Interstellar (2014)", "Interstellar - 2014", "Interstellar 2014", "Interstellar"
+    nonisolated static func parseImportLine(_ raw: String) -> (title: String, year: Int?) {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        let pattern = "(?<!\\d)(\\d{4})(?!\\d)[^\\d]*$"
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
-            return (trimmed, nil)
+        // Find a trailing 4-digit year in common patterns.
+        let patterns = [
+            #"\((\d{4})\)\s*$"#,
+            #"\-\s*(\d{4})\s*$"#,
+            #"(\d{4})\s*$"#
+        ]
+
+        for p in patterns {
+            if let r = s.range(of: p, options: .regularExpression) {
+                let yearStr = String(s[r]).filter("0123456789".contains)
+                let title = s.replacingCharacters(in: r, with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if let y = Int(yearStr) { return (title, y) }
+            }
         }
-
-        let nsString = trimmed as NSString
-        let fullRange = NSRange(location: 0, length: nsString.length)
-        guard let match = regex.firstMatch(in: trimmed, options: [], range: fullRange) else {
-            return (trimmed, nil)
-        }
-
-        let yearRange = match.range(at: 1)
-        guard let yearStringRange = Range(yearRange, in: trimmed),
-              let year = Int(trimmed[yearStringRange]),
-              (1888...2100).contains(year) else {
-            return (trimmed, nil)
-        }
-
-        var title = trimmed
-        if let removalRange = Range(match.range, in: trimmed) {
-            title.removeSubrange(removalRange)
-        }
-
-        title = title.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
-        return (title, year)
+        return (s, nil)
     }
 }

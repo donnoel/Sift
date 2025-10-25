@@ -1,10 +1,11 @@
+// PATH: Sift/Views/Sections/ForYouView.swift
 import SwiftUI
 
 struct ForYouView: View {
     @EnvironmentObject private var library: LibraryStore
     @StateObject private var vm: ForYouViewModel
 
-    // Call site will pass: ForYouView(libraryProvider: { library.allMovies() })
+    // Call site should pass: ForYouView(libraryProvider: { library.allMovies() })
     init(libraryProvider: @escaping () -> [Movie]) {
         _vm = StateObject(wrappedValue: ForYouViewModel(libraryProvider: libraryProvider))
     }
@@ -17,7 +18,9 @@ struct ForYouView: View {
                 } else {
                     if let m = vm.mainPick {
                         SectionHeader("Tonight’s Pick")
+                        // Force a full re-render whenever the hero movie changes.
                         MovieHeroCard(movie: m, onWatched: { vm.markWatched(m) })
+                            .id(m.id)
                             .environmentObject(library)
                     }
 
@@ -25,7 +28,7 @@ struct ForYouView: View {
                         SectionHeader(genre.rawValue)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
-                                // Engine already delivers up to 10 per rail; clamp to 10 just in case.
+                                // Engine already delivers up to 10; clamp just in case.
                                 ForEach(Array(movies.prefix(10))) { m in
                                     MoviePosterCard(movie: m) { vm.markWatched(m) }
                                         .environmentObject(library)
@@ -39,37 +42,24 @@ struct ForYouView: View {
             .padding(20)
         }
         .refreshable {
-            // Pull-to-refresh rotates the seed so you SEE different results.
-            await MainActor.run {
-                vm.refresh(shuffle: true)
-                preheatForYouPosters()
+            // Pull-to-refresh triggers a reseed (rotate results) and recompute.
+            await MainActor.run { vm.refresh(shuffle: true) }
+        }
+        .task {
+            // Initial compute on first appearance.
+            if vm.mainPick == nil && vm.rails.isEmpty {
+                vm.refresh()
             }
         }
         .onAppear {
-            vm.refresh()
-            preheatForYouPosters()
-        }
-        .onChange(of: library.movies) { _, _ in
-            vm.refresh()
-            preheatForYouPosters()
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    vm.refresh(shuffle: true)
-                    preheatForYouPosters()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .accessibilityLabel("Refresh recommendations")
-                }
-            }
+            // Preheat posters for snappier scroll.
+            preheatVisiblePosters()
         }
     }
 
-    // Preheat poster images for main pick + rails (uses DiskImageCache)
-    private func preheatForYouPosters() {
+    private func preheatVisiblePosters() {
         var urls: [URL] = []
-        if let m = vm.mainPick, let u = library.posterURL(for: m.posterPath) {
+        if let h = vm.mainPick, let u = library.posterURL(for: h.posterPath) {
             urls.append(u)
         }
         for (_, movies) in vm.rails {
@@ -110,33 +100,43 @@ private struct MovieHeroCard: View {
             PosterImage(path: movie.posterPath)
                 .frame(height: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
-            Text(movie.title).font(.title.bold())
+
+            Text(movie.title)
+                .font(.title.bold())
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+
             if let o = movie.overview, !o.isEmpty {
-                Text(o).font(.callout).lineLimit(4)
+                Text(o)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(isCompactPhone ? 4 : 6)
             }
-            HStack {
-                if isCompactPhone {
-                    Button {
-                        onWatched()
-                    } label: {
-                        Image(systemName: "checkmark.circle.fill")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .accessibilityLabel("Mark \(movie.title) watched")
-                } else {
-                    Button {
-                        onWatched()
-                    } label: {
-                        Label("Watched", systemImage: "checkmark.circle.fill")
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
+
+            HStack(spacing: 12) {
+                if let y = movie.year {
+                    Label("\(y)", systemImage: "calendar")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                if let r = movie.rating {
+                    Label(String(format: "%.1f", r), systemImage: "star.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    onWatched()
+                } label: {
+                    Label("Watched", systemImage: "checkmark.circle.fill")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(movie.title)")
     }
 }
 
@@ -145,27 +145,17 @@ private struct MoviePosterCard: View {
     var onWatched: () -> Void
 
     @EnvironmentObject private var library: LibraryStore
+    @Environment(\.horizontalSizeClass) private var hSize
+    private var isCompactPhone: Bool { hSize == .compact }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             PosterImage(path: movie.posterPath)
-                .frame(width: 140, height: 210)
+                .frame(width: isCompactPhone ? 110 : 140, height: isCompactPhone ? 165 : 210)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .contextMenu {
-                    Button {
-                        onWatched()
-                    } label: {
-                        Label("Mark Watched", systemImage: "checkmark.circle.fill")
-                    }
-                    Button {
-                        UIPasteboard.general.string = movie.title
-                    } label: {
-                        Label("Copy Title", systemImage: "doc.on.doc")
-                    }
-                }
 
             Text(movie.title)
-                .font(.subheadline)
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
 
@@ -175,10 +165,11 @@ private struct MoviePosterCard: View {
                 Image(systemName: "checkmark.circle.fill")
             }
             .buttonStyle(.bordered)
-            .font(.caption)
-            .accessibilityLabel("Mark \(movie.title) watched")
+            .controlSize(.small)
         }
-        .frame(width: 140)
+        .frame(width: isCompactPhone ? 120 : 150, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(movie.title)")
     }
 }
 
@@ -188,13 +179,16 @@ private struct PosterImage: View {
 
     var body: some View {
         if let url = library.posterURL(for: path) {
-            // Uses your CachedAsyncImage with a simple placeholder
+            // KEY FIX: attach identity to the actual URL so SwiftUI can’t reuse a stale image view.
             CachedAsyncImage(url: url, contentMode: .fill) {
-                ZStack {
-                    Rectangle().fill(Color.secondary.opacity(0.15))
-                    Image(systemName: "film").imageScale(.large).opacity(0.5)
-                }
+                AnyView(
+                    ZStack {
+                        Rectangle().fill(Color.secondary.opacity(0.15))
+                        Image(systemName: "film").imageScale(.large).opacity(0.5)
+                    }
+                )
             }
+            .id(url.absoluteString)
         } else {
             ZStack {
                 Rectangle().fill(Color.secondary.opacity(0.15))
@@ -206,7 +200,7 @@ private struct PosterImage: View {
 
 private struct EmptyForYouState: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             Image(systemName: "sparkles")
                 .imageScale(.large)
                 .font(.system(size: 44))

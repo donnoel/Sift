@@ -1,3 +1,4 @@
+// PATH: Sift/Services/RecommendationEngine.swift
 import Foundation
 
 // If you already declare MovieGenre elsewhere, keep this enum here (as-is) or remove it there.
@@ -18,91 +19,118 @@ struct RecommendationResult {
 
 struct RecommendationEngine {
 
-    // MARK: - Public
-
-    /// Stable recommendations with deterministic rotation.
+    /// Compute hero + rails deterministically from a seed.
     /// - Parameters:
-    ///   - library: Pool of candidates (already filtered for cooldowns by caller).
-    ///   - wantedRails: Order determines rail order in the result.
-    ///   - picksPerRail: Target per row (default 10).
-    ///   - seed: Rotation seed; changing it rotates hero and rails predictably.
+    ///   - library: pre-filtered library (ForYouViewModel already removes cooldown)
+    ///   - rails: which rails to build (order respected)
+    ///   - picksPerRail: target count per rail
+    ///   - seed: deterministically affects selection/rotation
     func compute(
         library: [Movie],
-        rails wantedRails: [MovieGenre] = [.actionAdventure, .comedy, .drama, .horror, .thriller, .scienceFiction],
-        picksPerRail: Int = 10,
-        seed: UInt64 = 0
+        rails: [MovieGenre],
+        picksPerRail: Int,
+        seed: UInt64
     ) -> RecommendationResult {
-        guard !library.isEmpty else { return .init(mainPick: nil, rails: [:]) }
 
-        // Base sort for quality: rating desc → year desc → title asc
-        let base = library.sorted {
-            let l = ($0.rating ?? 0, $0.year ?? 0, $0.title)
-            let r = ($1.rating ?? 0, $1.year ?? 0, $1.title)
-            return l > r
+        guard !library.isEmpty else {
+            return .init(mainPick: nil, rails: [:])
         }
 
-        // Rotate the whole list so hero changes with seed.
-        let rotated = rotate(base, by: Int(seed % UInt64(max(1, min(base.count, 512)))))
+        // 1) Classify each movie → set of genres.
+        var byGenre: [MovieGenre: [Movie]] = [:]
+        var allClassified: [Movie] = []
+        allClassified.reserveCapacity(library.count)
 
-        // Hero = top of rotated list
-        let main = rotated.first
-
-        // Bucket by genre in rotated order so seed affects rails too.
-        var buckets: [MovieGenre: [Movie]] = [:]
-        var unclassified: [Movie] = []
-        for m in rotated {
-            let gs = classify(m)
-            if gs.isEmpty {
-                unclassified.append(m)
-            } else {
-                for g in gs { buckets[g, default: []].append(m) }
-            }
+        for m in library {
+            let g = classify(m)
+            if g.isEmpty { continue }
+            allClassified.append(m)
+            for gg in g { byGenre[gg, default: []].append(m) }
         }
 
-        // Dedup across hero + all rails using model ID type
-        var used = Set<Movie.ID>()
-        if let main { used.insert(main.id) }
-
-        // Per-genre deterministic shuffle (seed mixed with the genre label)
-        func shuffled(_ movies: [Movie], for genre: MovieGenre) -> [Movie] {
-            let genreSeed = seed &+ hash64(genre.rawValue) &+ 0x9E3779B97F4A7C15
-            return fisherYates(movies, seed: genreSeed)
+        // 2) Score function favors higher ratings and year proximity to median.
+        let medianYear = median(library.compactMap { $0.year })
+        func score(_ m: Movie) -> Double {
+            let r = (m.rating ?? 0) / 10.0                // 0…1
+            let y = m.year ?? medianYear ?? 2000
+            let yDelta = abs(Double(y - (medianYear ?? y)))
+            let yBoost = max(0.0, 1.0 - min(yDelta, 25.0)/25.0) // within ~25y zone
+            return r * 0.7 + yBoost * 0.3
         }
 
-        // First pass: pick from each genre's own (shuffled) bucket
+        // 3) Choose a main pick from the top bucket; deterministic rotation by seed.
+        let rankedAll = library.sorted { score($0) > score($1) }
+        let heroPool = Array(rankedAll.prefix(max(12, picksPerRail)))
+        let mainPick = rotate(heroPool, by: Int(seed % UInt64(max(heroPool.count, 1)))).first
+
+        // 4) Build rails: per-genre ranked lists, dedupe across rails & hero, then backfill.
+        var used: Set<Int> = []
+        if let h = mainPick { used.insert(h.id) }
+
+        // Pre-rank each rail
         var railMap: [MovieGenre: [Movie]] = [:]
-        for g in wantedRails {
-            let own = buckets[g, default: []].filter { !used.contains($0.id) }
-            let shuffledOwn = shuffled(own, for: g)
-            let picked = take(shuffledOwn, upTo: picksPerRail, used: &used)
-            railMap[g] = picked
+        for g in rails {
+            let candidates = (byGenre[g] ?? [])
+                .sorted { score($0) > score($1) }
+            railMap[g] = candidates
         }
 
-        // Second pass: backfill short rails from global leftovers (shuffled)
-        var leftovers: [Movie] = []
-        for g in wantedRails {
-            leftovers += buckets[g, default: []]
-        }
-        leftovers += unclassified
-        leftovers.removeAll { used.contains($0.id) }
-        leftovers = fisherYates(leftovers, seed: seed &+ 0xD00DF00DCAFEBABE)
-
-        var li = 0
-        for g in wantedRails {
-            var current = railMap[g] ?? []
-            while current.count < picksPerRail, li < leftovers.count {
-                let m = leftovers[li]; li += 1
-                if used.insert(m.id).inserted { current.append(m) }
+        // Dedupe and take top N per rail, rotating by seed to give variety.
+        for g in rails {
+            let base = rotate(railMap[g] ?? [], by: Int(seed % 17))
+            var out: [Movie] = []
+            for m in base where out.count < picksPerRail {
+                if used.insert(m.id).inserted { out.append(m) }
             }
-            railMap[g] = current
+            railMap[g] = out
         }
 
-        return .init(mainPick: main, rails: railMap)
+        // Backfill skinnier rails using leftover high-quality titles.
+        let leftoverPool = rankedAll.filter { !used.contains($0.id) }
+        var li = 0
+        for g in rails {
+            var curr = railMap[g] ?? []
+            while curr.count < picksPerRail, li < leftoverPool.count {
+                let m = leftoverPool[li]; li += 1
+                if used.insert(m.id).inserted { curr.append(m) }
+            }
+            railMap[g] = curr
+        }
+
+        return .init(mainPick: mainPick, rails: railMap)
     }
 
-    // MARK: - Genre classification (simple heuristic)
-
+    // MARK: - Genre classification (prefer TMDB, fallback to keywords)
     private func classify(_ movie: Movie) -> Set<MovieGenre> {
+        // 1) Use authoritative TMDB tags if present.
+        if let names = movie.tmdbGenres, !names.isEmpty {
+            var out: Set<MovieGenre> = []
+            let g = names.map { $0.lowercased() }
+
+            if g.contains(where: { $0.contains("action") || $0.contains("adventure") }) {
+                out.insert(.actionAdventure)
+            }
+            if g.contains(where: { $0.contains("science fiction") || $0 == "sci-fi" || $0 == "sci fi" }) {
+                out.insert(.scienceFiction)
+            }
+            if g.contains(where: { $0.contains("comedy") }) {
+                out.insert(.comedy)
+            }
+            if g.contains(where: { $0.contains("drama") }) {
+                out.insert(.drama)
+            }
+            if g.contains(where: { $0.contains("horror") }) {
+                out.insert(.horror)
+            }
+            if g.contains(where: { $0.contains("thriller") || $0.contains("crime") || $0.contains("mystery") }) {
+                out.insert(.thriller)
+            }
+
+            if !out.isEmpty { return out }
+            // otherwise, fall through to heuristics
+        }
+
+        // 2) Fallback heuristics (title + overview keywords).
         let t = movie.title.lowercased()
         let o = (movie.overview ?? "").lowercased()
         let text = t + " " + o
@@ -110,24 +138,15 @@ struct RecommendationEngine {
 
         if text.containsAny(of: ["space","alien","future","robot","cyber","sci-fi","sci fi"]) { g.insert(.scienceFiction) }
         if text.containsAny(of: ["murder","chase","detective","suspense","conspiracy","crime","heist"]) { g.insert(.thriller) }
-        if text.containsAny(of: ["ghost","haunted","demon","slash","zombie","possession","creature","horror"]) { g.insert(.horror) }
-        if text.containsAny(of: ["war","battle","spy","mission","explosion","car chase","ninja","sword","fight","adventure","action"]) { g.insert(.actionAdventure) }
-        if text.containsAny(of: ["love","family","life","tragedy","biopic","drama","relationship"]) { g.insert(.drama) }
-        if text.containsAny(of: ["funny","hilarious","comedy","sitcom","joke","laugh"]) { g.insert(.comedy) }
+        if text.containsAny(of: ["ghost","haunted","demon","slash","zombie","possession","exorcism"]) { g.insert(.horror) }
+        if text.containsAny(of: ["love","family","heart","relationship","life","tragedy"]) { g.insert(.drama) }
+        if text.containsAny(of: ["laugh","funny","hilarious","comedy","joke","satire"]) { g.insert(.comedy) }
+        if text.containsAny(of: ["battle","war","hero","spy","adventure","quest","action"]) { g.insert(.actionAdventure) }
 
         return g
     }
 
     // MARK: - Helpers
-
-    private func take(_ src: [Movie], upTo k: Int, used: inout Set<Movie.ID>) -> [Movie] {
-        var out: [Movie] = []
-        out.reserveCapacity(min(k, src.count))
-        for m in src where out.count < k {
-            if used.insert(m.id).inserted { out.append(m) }
-        }
-        return out
-    }
 
     private func rotate<T>(_ a: [T], by offset: Int) -> [T] {
         guard !a.isEmpty else { return a }
@@ -136,39 +155,12 @@ struct RecommendationEngine {
         return Array(a[o...] + a[..<o])
     }
 
-    private func hash64(_ s: String) -> UInt64 {
-        // FNV-1a 64-bit
-        var h: UInt64 = 0xcbf29ce484222325
-        let prime: UInt64 = 0x100000001b3
-        for b in s.utf8 {
-            h ^= UInt64(b)
-            h &*= prime
-        }
-        return h
-    }
-
-    private func fisherYates<T>(_ array: [T], seed: UInt64) -> [T] {
-        var arr = array
-        var rng = SplitMix64(state: seed | 1) // avoid zero state
-        if arr.count > 1 {
-            for i in stride(from: arr.count - 1, through: 1, by: -1) {
-                let j = Int(rng.next() % UInt64(i + 1))
-                if i != j { arr.swapAt(i, j) }
-            }
-        }
-        return arr
-    }
-}
-
-// MARK: - SplitMix64 PRNG (deterministic, fast)
-private struct SplitMix64 {
-    var state: UInt64
-    mutating func next() -> UInt64 {
-        state &+= 0x9E3779B97F4A7C15
-        var z = state
-        z = (z ^ (z >> 30)) &* 0xBF58476D1CE4E5B9
-        z = (z ^ (z >> 27)) &* 0x94D049BB133111EB
-        return z ^ (z >> 31)
+    private func median(_ arr: [Int]) -> Int? {
+        guard !arr.isEmpty else { return nil }
+        let s = arr.sorted()
+        let mid = s.count / 2
+        if s.count % 2 == 0 { return (s[mid-1] + s[mid]) / 2 }
+        return s[mid]
     }
 }
 

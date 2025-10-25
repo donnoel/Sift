@@ -1,3 +1,4 @@
+// PATH: Sift/Model/Movie.swift
 import Foundation
 
 struct Movie: Identifiable, Codable, Hashable {
@@ -7,6 +8,9 @@ struct Movie: Identifiable, Codable, Hashable {
     var rating: Double?
     var overview: String?
     var posterPath: String?
+
+    /// NEW: TMDB genre names captured during import (authoritative, optional for back-compat).
+    var tmdbGenres: [String]? = nil
 
     var posterURL: URL? {
         guard let p = posterPath else { return nil }
