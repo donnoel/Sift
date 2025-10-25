@@ -4,13 +4,41 @@ import XCTest
 
 @MainActor
 final class ForYouViewModelTests: XCTestCase {
+    private var suiteName: String!
+    private var defaults: UserDefaults!
+    private var cloudStore: StubUbiquitousKeyValueStore!
+    private var history: WatchHistoryStore!
+
+    override func setUp() {
+        super.setUp()
+
+        suiteName = "ForYouViewModelTests_\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            fatalError("Failed to create UserDefaults with suite \(suiteName!)")
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+
+        self.defaults = defaults
+        cloudStore = StubUbiquitousKeyValueStore()
+        history = WatchHistoryStore(defaults: defaults, store: cloudStore)
+    }
+
+    override func tearDown() {
+        history = nil
+        cloudStore = nil
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        suiteName = nil
+
+        super.tearDown()
+    }
+
     func testRefreshSetsMainPickAndRails() {
         let lib = [
             Movie(id: 1, title: "A", year: 2010, rating: 8.0, overview: nil, posterPath: nil),
             Movie(id: 2, title: "B", year: 2011, rating: 7.0, overview: nil, posterPath: nil),
             Movie(id: 3, title: "C", year: 2012, rating: 6.5, overview: nil, posterPath: nil),
         ]
-        let history = WatchHistoryStore.shared
         history.clearAll()
         let vm = ForYouViewModel(history: history, libraryProvider: { lib })
         vm.refresh()
@@ -23,7 +51,6 @@ final class ForYouViewModelTests: XCTestCase {
             Movie(id: 11, title: "Hot", year: 2020, rating: 9.4, overview: nil, posterPath: nil),
             Movie(id: 12, title: "Other", year: 2021, rating: 7.1, overview: nil, posterPath: nil),
         ]
-        let history = WatchHistoryStore.shared
         history.clearAll()
         let vm = ForYouViewModel(history: history, libraryProvider: { lib })
         vm.refresh()
