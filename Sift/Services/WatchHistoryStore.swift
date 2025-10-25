@@ -26,6 +26,7 @@ final class WatchHistoryStore: ObservableObject {
     private let defaults: UserDefaults
     private let store: NSUbiquitousKeyValueStore
     private let log = Logger(subsystem: "Sift", category: "WatchHistory")
+    private var cloudObserver: NSObjectProtocol?
 
     // MARK: - Settings
     private(set) var cloudSyncEnabled: Bool {
@@ -52,7 +53,7 @@ final class WatchHistoryStore: ObservableObject {
         }
 
         // Observe external iCloud changes
-        NotificationCenter.default.addObserver(
+        cloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
             object: store, queue: .main
         ) { [weak self] note in
@@ -66,7 +67,9 @@ final class WatchHistoryStore: ObservableObject {
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(self)
+        if let cloudObserver {
+            NotificationCenter.default.removeObserver(cloudObserver)
+        }
     }
 
     // MARK: - Public API
