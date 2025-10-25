@@ -51,10 +51,31 @@ final class LibraryStore_NewTests: XCTestCase {
         XCTAssertEqual(reloaded.first?.title, "Interstellar")
     }
 
-    func testDeleteAll_clearsState_andPersists() async throws {
-        // The LibraryStore in this revision does not expose a 'deleteAll' API.
-        // Skip this test until we align on the proper public deletion method.
-        try XCTSkipIf(true, "LibraryStore.deleteAll() not found; pending confirmation of public deletion API (e.g., clear(), removeAll(), reset()).")
+    func testClearAll_clearsState_andPersists() async throws {
+        // Library deletion flows should call clearAll(), which resets state and persists the empty collection.
+        let settings = makeTestAppSettings("ABC123")
+        let session = URLSession.stubbing()
+        let client = TMDBClient(settings: settings, session: session)
+        let mem = InMemoryPersistence()
+        let store = LibraryStore(settings: settings, client: client, persistence: mem, loadOnInit: false)
+
+        SiftStubURLProtocol.responder = { req in
+            let path = req.url?.path ?? ""
+            if path.contains("/search/movie")   { return (200, Fixtures.searchInterstellar) }
+            if path.contains("/movie/")         { return (200, Fixtures.detailsInterstellar) }
+            if path.contains("/configuration")  { return (200, Fixtures.imagesConfig) }
+            return (404, Data())
+        }
+
+        await store.importFromPaste("Interstellar")
+
+        XCTAssertEqual(store.movies.count, 1)
+        XCTAssertEqual(mem.storage.count, 1)
+
+        await store.clearAll()
+
+        XCTAssertTrue(store.movies.isEmpty)
+        XCTAssertTrue(mem.storage.isEmpty)
     }
 
     func testYearParsing() {
