@@ -155,7 +155,10 @@ final class WatchHistoryStore: ObservableObject {
 
     private static func encodeLocal(_ dict: [MovieID: Date]) -> Data? {
         do {
-            let payload = dict.mapValues { $0.timeIntervalSince1970 }
+            // JSONSerialization requires String keys; convert from Int -> String
+            let payload: [String: Double] = dict.reduce(into: [:]) { result, pair in
+                result[String(pair.key)] = pair.value.timeIntervalSince1970
+            }
             return try JSONSerialization.data(withJSONObject: payload, options: [])
         } catch {
             return nil
