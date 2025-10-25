@@ -130,6 +130,7 @@ struct SettingsView: View {
             let cutoff = Calendar.current.date(byAdding: .day, value: -recentDays, to: Date()) ?? Date.distantPast
             let recentWatched = history.watched.values.filter { $0 >= cutoff }.count
             let mostRecent = history.watched.values.max()
+            let daysSuffix = String(localized: "days", comment: "Suffix describing a day count")
 
             // Row: Library size
             HStack {
@@ -160,7 +161,7 @@ struct SettingsView: View {
 
             // Row: Watched recently
             HStack {
-                Label("Watched (last \(recentDays)d)", systemImage: "clock")
+                Label("Watched (last \(recentDays) \(daysSuffix))", systemImage: "clock")
                 Spacer()
                 Text("\(recentWatched)")
                     .font(isCompactPhone ? .body.weight(.semibold) : .title3.weight(.semibold))
