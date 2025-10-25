@@ -87,4 +87,26 @@ final class TMDBClientTests: XCTestCase {
         XCTAssertEqual(det.id, 157336)
         XCTAssertEqual(det.runtime, 169)
     }
+
+    func testBestSearchMatchNormalizesWhitespaceSequences() async throws {
+        let imagesCfg = #"""
+        {"images":{"base_url":"http://img/","secure_base_url":"https://img/","poster_sizes":["w92","w500","original"]}}
+        """#.data(using: .utf8)!
+
+        let search = #"""
+        {"results":[
+            {"id":101,"title":"Messy\tSpacing\nMovie","release_date":"2000-01-01","poster_path":null,"overview":null,"vote_average":1},
+            {"id":202,"title":"Messy Spacing Movie 2","release_date":"2001-01-01","poster_path":null,"overview":null,"vote_average":1000}
+        ]}
+        """#.data(using: .utf8)!
+
+        let client = makeClient(
+            configResponder: { _ in (200, imagesCfg) },
+            searchResponder: { _ in (200, search) },
+            detailsResponder: { _ in (500, Data()) }
+        )
+
+        let best = try await client.bestSearchMatch(for: "Messy Spacing Movie", year: 2000)
+        XCTAssertEqual(best?.id, 101)
+    }
 }

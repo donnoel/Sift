@@ -226,7 +226,7 @@ final class TMDBClient {
         let folded = lowered.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .autoupdatingCurrent)
         // Strip punctuation and extra spaces
         let cleaned = folded.unicodeScalars.filter { CharacterSet.alphanumerics.union(.whitespacesAndNewlines).contains($0) }
-        return String(String.UnicodeScalarView(cleaned)).replacingOccurrences(of: #"s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(String.UnicodeScalarView(cleaned)).replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func tokenSet(_ s: String) -> Set<String> {
